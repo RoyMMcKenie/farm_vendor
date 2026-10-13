@@ -4,7 +4,7 @@ MagFarm rule: documented, then tested, then enabled. Live selling stays off (`co
 
 ## Offline logic tests (already run)
 
-`tests/run_tests.py` runs the real package under LuaJIT with a mock MacroQuest client (`tests/harness.lua`). Result for v1.1.0: 22 of 22 passed.
+`tests/run_tests.py` runs the real package under LuaJIT with a mock MacroQuest client (`tests/harness.lua`). Result for v1.1.1: 25 of 25 passed.
 
 | # | Scenario |
 |---|---|
@@ -30,6 +30,9 @@ MagFarm rule: documented, then tested, then enabled. Live selling stays off (`co
 | 20 | No quote arrives: sale blocked (fail closed) |
 | 21 | Item with no merchant price excluded while the merchant is open; remembered check kept; run completes |
 | 22 | Refusal after the quote reported as a refusal; stack untouched |
+| 23 | One refusal after a valid quote is retried once and then sells (Rune of Impetus case) |
+| 24 | A quote naming a different item is ignored |
+| 25 | Backtick item names match apostrophes in chat |
 
 The mock merchant now behaves like the client did on 2026-10-13: the quote arrives after a delay, and a sale sent before the quote is answered "I am not interested in buying that."
 
@@ -40,6 +43,7 @@ The mock merchant now behaves like the client did on 2026-10-13: the quote arriv
 | 2026-10-13 | 1.0.0 | Stage 1 preview passed (1.1, 1.2, 1.4, 1.6, 1.7) on Merchant Wyn\`las: 43 stacks, 168 items, no commands |
 | 2026-10-13 | 1.0.0 | Live: Peridot selected and sold, coin matched estimate within 1c. Nodding Blue Lily selected, then refused ("not interested") because the sale was sent before the quote; run stopped safely |
 | 2026-10-13 | manual | `/sellitem 1` then `/sellitem 41` on the selected lily sold all 42 after the quote |
+| 2026-10-13 | 1.1.0 | Live: Wax Flower, Words of Incarceration, Words of Burnishing sold and verified (13p 5g 1s). Rune of Impetus quoted, refused once, quoted again; run stopped safely |
 
 To rerun: `pip install lupa`, then `python tests/run_tests.py` from the release folder that contains both `magfarm_vendor` and `tests`. These prove program logic only, not client behavior.
 

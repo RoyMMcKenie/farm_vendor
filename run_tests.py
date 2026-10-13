@@ -292,6 +292,41 @@ H.on(function() return HARNESS.windows['Confirm Sale##mfv_confirm'] end, functio
 H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_cancel') end)
 """, c22, mode='live', ini=INI_OK)
 
+
+# 23 one refusal after a valid quote is retried once and succeeds
+def c23(lua, d, err):
+    return (err is None and G(lua,"HARNESS.outHas('sale.retry')") and G(lua,"HARNESS.stack(23,0)")==0
+            and G(lua,"HARNESS.outHas('reason=Completed')")), 'retry'
+scenario('live: single refusal after a valid quote is retried once and then sells (Rune of Impetus case)', r"""
+H.std(); HARNESS.world.refuseOnce = { [13073] = true }
+H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##mfv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_cancel') end)
+""", c23, mode='live', ini=INI_OK)
+
+# 24 quote for a different item is ignored; real quote still accepted
+def c24(lua, d, err):
+    return (err is None and G(lua,"HARNESS.outHas('item.quote_other_item')") and G(lua,"HARNESS.outHas('reason=Completed')")), 'stray'
+scenario('quotes: a quote naming a different item is ignored', r"""
+H.std(); HARNESS.world.strayQuote = true
+H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##mfv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_cancel') end)
+""", c24, mode='live', ini=INI_OK)
+
+# 25 backtick name matches apostrophe in chat
+def c25(lua, d, err):
+    return (err is None and G(lua,"HARNESS.stack(26,nil)")==0 and not G(lua,"HARNESS.outHas('quote_other_item')")), 'backtick'
+scenario("quotes: Rune of Ap`Sagor matches chat text Rune of Ap'Sagor", r"""
+H.std(); HARNESS.world.packs[26] = { item = H.mkItem(6061,'Rune of Ap`Sagor',2,400) }
+HARNESS.world.quoteName = nil
+local orig = HARNESS.exec
+HARNESS.exec = function(c) if c:find('^/itemnotify 26') then HARNESS.world.quoteName = "Rune of Ap'Sagor" else HARNESS.world.quoteName = nil end return orig(c) end
+H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##mfv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_cancel') end)
+""", c25, mode='live', ini=INI_OK.replace('10037=1\n','10037=1\n6061=1\n'))
+
 p = sum(1 for r in results if r[1])
 for n, ok, m in results:
     print(('PASS' if ok else 'FAIL'), n, '' if ok else '\n  '+m)

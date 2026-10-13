@@ -2,7 +2,7 @@
 
 A MacroQuest Lua inventory seller built under the MagFarm engineering rules. It lists the items you carry, remembers the ones you check in a per character INI, and sells only what you confirm, one verified stack at a time.
 
-Version 1.1.0. Live selling is off by default; see TESTING.md before enabling it.
+Version 1.1.1. Live selling is off by default; see TESTING.md before enabling it.
 
 ## Install
 

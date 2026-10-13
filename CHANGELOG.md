@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.1 (2026-10-13)
+
+Second live test (v1.1.0): Wax Flower x28, Words of Incarceration x4 and Words of Burnishing x2 sold and verified; coin change 13p 5g 1s matched. Rune of Impetus was quoted ("2p 5g 7s 1c per Rune of Impetus"), refused once, then quoted again, while the merchant window still showed it for sale.
+
+* `POST_QUOTE_DELAY_MS` default raised from 150 to 500.
+* New `SELL_REFUSAL_RETRIES` (default 1) and `RETRY_DELAY_MS` (default 1000): a refusal that follows a valid quote for that exact item is retried once, after re-selecting and getting a new quote. Refusals with no quote are never retried. Partial sales are never retried.
+* A quote of the form "per <item>" must name the selected item; quotes for another item are logged and ignored. Backtick and apostrophe are treated as equal (Ap`Sagor and Ap'Sagor).
+* Select, quote and sell are now separate functions (`selectAndQuote`, `sellOnce`) for easier review.
+* Offline tests: 25 of 25.
+
+
 ## 1.1.0 (2026-10-13)
 
 Fixes the first live test failure, where Nodding Blue Lily was refused with "I am not interested in buying that." The sale was sent before the merchant's price quote arrived. Selling the same item by hand after the quote worked.

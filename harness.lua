@@ -123,7 +123,8 @@ function H.exec(c)
         say("Merchant Wyn'las told you, 'I am not interested in buying that.'", 200)
       elseif not H.world.noQuote then
         H.world.quoteAt = H.now + H.world.quoteDelay
-        say(("Merchant Wyn'las told you, 'I'll give you 1 gold 9 silver per %s'"):format(it.name), H.world.quoteDelay)
+        if H.world.strayQuote then say("Merchant Wyn'las told you, 'I'll give you 9 silver per Some Other Thing'", 50) end
+        say(("Merchant Wyn'las told you, 'I'll give you 1 gold 9 silver per %s'"):format(H.world.quoteName or it.name), H.world.quoteDelay)
       end
     end
     return
@@ -132,7 +133,9 @@ function H.exec(c)
   if q then
     q = tonumber(q); local s = H.world.selected; if not s then return end
     local it = locate(s.slot, s.sub)
-    if not it or H.world.refuse[it.id] or (H.world.refuseAtSell and H.world.refuseAtSell[it.id]) or not H.world.quoteAt or H.now < H.world.quoteAt then
+    local once = H.world.refuseOnce and H.world.refuseOnce[it and it.id or 0]
+    if once then H.world.refuseOnce[it.id] = nil end
+    if not it or once or H.world.refuse[it.id] or (H.world.refuseAtSell and H.world.refuseAtSell[it.id]) or not H.world.quoteAt or H.now < H.world.quoteAt then
       H.premature = (H.premature or 0) + 1
       say("Merchant Wyn'las told you, 'I am not interested in buying that.'", 100); return
     end

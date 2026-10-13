@@ -1,11 +1,11 @@
-[MagFarmVendor] INFO startup.begin character=TestMag mode=live server="test server" version=1.1.0
-[MagFarmVendor] INFO store.loaded path=/tmp/tmpojuodm6o/magfarm_vendor_test%20server_TestMag.ini selected=2 status=loaded
+[MagFarmVendor] INFO startup.begin character=TestMag mode=live server="test server" version=1.1.1
+[MagFarmVendor] INFO store.loaded path=/tmp/tmpff02k4pm/magfarm_vendor_test%20server_TestMag.ini selected=2 status=loaded
 [MagFarmVendor] INFO inventory.scanned eligible=3 protected_hidden=2 reason=startup rows=4
-[MagFarmVendor] INFO startup.ready file=/tmp/tmpojuodm6o/magfarm_vendor_test%20server_TestMag.ini mode=live
+[MagFarmVendor] INFO startup.ready file=/tmp/tmpff02k4pm/magfarm_vendor_test%20server_TestMag.ini mode=live
 [MagFarmVendor] INFO inventory.scanned eligible=3 protected_hidden=2 reason=prepare rows=4
 [MagFarmVendor] INFO sale.proposed mode=live qty=28 stacks=3 types=2
 [MagFarmVendor] INFO inventory.scanned eligible=3 protected_hidden=2 reason=confirm rows=4
-[MagFarmVendor] INFO store.saved count=1 path=/tmp/tmpojuodm6o/magfarm_vendor_test%20server_TestMag.ini reason=confirm
+[MagFarmVendor] INFO store.saved count=1 path=/tmp/tmpff02k4pm/magfarm_vendor_test%20server_TestMag.ini reason=confirm
 [MagFarmVendor] INFO run.start merchant="Test Merchant" mode=live policy=stop qty=28 stacks=3
 [MagFarmVendor] INFO sale.verified id=13073 name="Bone Chips" pack=1 qty=20 slot=1
 [MagFarmVendor] INFO sale.verified id=13073 name="Bone Chips" pack=1 qty=5 slot=2

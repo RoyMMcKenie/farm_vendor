@@ -59,6 +59,9 @@ end
 -- Live client readings (all wrapped; nil means "unknown")
 -- ---------------------------------------------------------------------------
 
+-- Normalize names for quote matching: lower case, backtick/apostrophe equal.
+local function norm(s) return (tostring(s or ''):lower():gsub('`', "'")) end
+
 local probe = {}
 function probe.gameState()     return read(function() return mq.TLO.EverQuest.GameState() end) end
 function probe.merchantOpen()  return read(function() return mq.TLO.Merchant.Open() end) end
@@ -215,6 +218,19 @@ local EVENT_QUOTE, EVENT_REFUSAL = 'mfv_quote', 'mfv_refusal'
 function seller:registerEvents()
     self.events = { quotes = 0, refusals = 0, lastQuote = nil }
     mq.event(EVENT_QUOTE, '#*#' .. self.cfg.QUOTE_PHRASE .. '#*#', function(line)
+        -- A quote of the form "... per <item>'" must name the item we selected;
+        -- a quote for a different item is logged and ignored. A quote without
+        -- " per " (format not yet seen) is accepted with a warning, because the
+        -- selection itself is already verified by Merchant.SelectedItem.
+        local l, want = norm(line), norm(self.expectName)
+        if self.expectName and l:find(' per ', 1, true) and not l:find(want, 1, true) then
+            self.events.otherQuotes = (self.events.otherQuotes or 0) + 1
+            self.log.warn('item.quote_other_item', { expected = self.expectName, quote = line })
+            return
+        end
+        if self.expectName and not l:find(want, 1, true) then
+            self.log.warn('item.quote_unnamed', { expected = self.expectName, quote = line })
+        end
         self.events.quotes = self.events.quotes + 1
         self.events.lastQuote = line
     end)
@@ -263,6 +279,65 @@ local function issueSelect(e)
     else
         mq.cmdf('/itemnotify %d leftmouseup', e.topSlot)
     end
+end
+
+--- Select one entry and wait for the merchant's quote naming that item.
+--- @return string outcome 'ok'|'refused'|'noquote'|'noselect'|'cursor'|'stopped', string detail
+function seller:selectAndQuote(e)
+    local cfg, log = self.cfg, self.log
+    self:flushMerchantEvents()
+    self.expectName = e.name
+    local q0, r0 = self.events.quotes, self.events.refusals
+    issueSelect(e)
+    local selected = self:waitFor(cfg.SELECT_TIMEOUT_MS, function() return selectionMatches(e) end)
+    local cur = probe.cursorId()
+    if cur ~= nil and cur ~= 0 then return 'cursor', 'Item went to the cursor; stopped for manual handling' end
+    if self.stopRequested and not selected then return 'stopped' end
+    if not selected then return 'noselect', 'Merchant did not report the expected selection' end
+    log.debug('item.selected', { id = e.id, name = e.name, pack = e.pack, slot = e.sub and (e.sub + 1) or 'loose' })
+
+    local answered = self:waitFor(cfg.QUOTE_TIMEOUT_MS, function()
+        return self.events.quotes > q0 or self.events.refusals > r0
+    end)
+    if self.events.quotes > q0 then
+        log.debug('item.quoted', { id = e.id, name = e.name, quote = self.events.lastQuote })
+        return 'ok'
+    end
+    if self.events.refusals > r0 then return 'refused', 'Merchant is not interested in buying this item' end
+    if self.stopRequested then return 'stopped' end
+    return 'noquote', 'No price quote from merchant after selection'
+end
+
+--- Issue /sellitem for the full entry quantity and verify the result.
+--- @return string outcome 'sold'|'sale_refused'|'partial'|'timeout'|'stopped', string detail
+function seller:sellOnce(e, report)
+    local cfg, log = self.cfg, self.log
+    if cfg.POST_QUOTE_DELAY_MS > 0 then mq.delay(cfg.POST_QUOTE_DELAY_MS) end
+    local r1 = self.events.refusals
+    mq.cmdf('/sellitem %d', e.qty)
+    local gone = self:waitFor(cfg.SELL_TIMEOUT_MS, function()
+        if self.events.refusals > r1 then return true end
+        local x = inventory.readLocation(e.topSlot, e.sub)
+        return x == nil or x.id ~= e.id or (type(x.stack) == 'number' and x.stack < e.qty)
+    end)
+    local after = inventory.readLocation(e.topSlot, e.sub)
+    local remaining = (after and after.id == e.id) and (after.stack or e.qty) or 0
+    local sold = e.qty - remaining
+    if sold > 0 then
+        report.byId[e.id].sold = report.byId[e.id].sold + sold
+        report.soldQty = report.soldQty + sold
+    end
+    if remaining == 0 then
+        log.info('sale.verified', { id = e.id, name = e.name, qty = sold, pack = e.pack, slot = e.sub and (e.sub + 1) or 'loose' })
+        return 'sold'
+    end
+    if sold > 0 then
+        e.qty = remaining      -- never retry a partial; report it
+        return 'partial', ('Partial sale: %d of %d sold'):format(sold, sold + remaining)
+    end
+    if self.events.refusals > r1 then return 'sale_refused', 'Merchant refused the sale (not interested)' end
+    if self.stopRequested then return 'stopped' end
+    return 'timeout', 'Sale not confirmed within timeout'
 end
 
 -- ---------------------------------------------------------------------------
@@ -332,93 +407,47 @@ function seller:run(proposal)
                 goto continue
             end
 
-            -- 2. Select and verify the selection.
-            self:flushMerchantEvents()
-            local q0, r0 = self.events.quotes, self.events.refusals
-            issueSelect(e)
-            local selected = self:waitFor(cfg.SELECT_TIMEOUT_MS, function() return selectionMatches(e) end)
-            local cur = probe.cursorId()
-            if cur ~= nil and cur ~= 0 then
-                report.stopReason = 'Item went to the cursor; stopped for manual handling'
-                fail(e, report.stopReason, true); break
-            end
-            if self.stopRequested and not selected then report.stopReason = 'Stopped by operator'; break end
-            if not selected then
-                if fail(e, 'Merchant did not report the expected selection') == 'stop' then break end
-                goto continue
-            end
-            report.byId[e.id].selected = report.byId[e.id].selected + 1
-            report.selectedOk = report.selectedOk + 1
-            log.debug('item.selected', { id = e.id, name = e.name, pack = e.pack, slot = e.sub and (e.sub + 1) or 'loose' })
-
-            -- 2b. Wait for the merchant's price quote (or refusal) for THIS selection.
-            --     v1.0.0 sold before the quote arrived and the merchant answered
-            --     "I am not interested in buying that."
+            -- 2-4. Select, verify, wait for this item's quote, sell, verify.
+            --      One sale-time refusal after a valid quote is retried up to
+            --      cfg.SELL_REFUSAL_RETRIES times (bounded), re-selecting first.
             do
-                local answered = self:waitFor(cfg.QUOTE_TIMEOUT_MS, function()
-                    return self.events.quotes > q0 or self.events.refusals > r0
-                end)
-                if self.events.refusals > r0 then
-                    if fail(e, 'Merchant is not interested in buying this item') == 'stop' then break end
-                    goto continue
+                local outcome, detail
+                local attempt = 0
+                while true do
+                    attempt = attempt + 1
+                    outcome, detail = self:selectAndQuote(e)
+                    if outcome == 'ok' then
+                        if attempt == 1 then
+                            report.byId[e.id].selected = report.byId[e.id].selected + 1
+                            report.selectedOk = report.selectedOk + 1
+                        end
+                        if self.mode == 'select_test' then break end
+                        local h = self:hardStopReason(merchantId)
+                        if h then outcome, detail = 'hard', h; break end
+                        if self.stopRequested then outcome = 'stopped'; break end
+                        outcome, detail = self:sellOnce(e, report)
+                    end
+                    if outcome == 'sale_refused' and attempt <= cfg.SELL_REFUSAL_RETRIES and not self.stopRequested then
+                        log.warn('sale.retry', { id = e.id, name = e.name, attempt = attempt + 1,
+                            wait_ms = cfg.RETRY_DELAY_MS, note = 'refused after a valid quote; re-selecting' })
+                        self:waitFor(cfg.RETRY_DELAY_MS, function() return false end)
+                        local h = self:hardStopReason(merchantId)
+                        if h then outcome, detail = 'hard', h; break end
+                    else
+                        break
+                    end
                 end
-                if not answered then
-                    if self.stopRequested then report.stopReason = 'Stopped by operator'; break end
-                    if fail(e, 'No price quote from merchant after selection') == 'stop' then break end
-                    goto continue
-                end
-                local line = self.events.lastQuote or ''
-                local named = line:lower():find(e.name:lower(), 1, true) ~= nil
-                log.debug('item.quoted', { id = e.id, name = e.name, quote = line, names_item = named })
-                if not named then
-                    log.warn('item.quote_unnamed', { id = e.id, name = e.name, quote = line,
-                        note = 'quote did not include the item name; selection was verified by Merchant.SelectedItem' })
-                end
-                report.byId[e.id].quoted = (report.byId[e.id].quoted or 0) + 1
-            end
 
-            if self.mode == 'select_test' then
-                report.stacksDone = report.stacksDone + 1
-                goto pace
-            end
-
-            -- 3. Final guard immediately before the irreversible action.
-            hard = self:hardStopReason(merchantId)
-            if hard then report.stopReason = hard; fail(e, hard, true); break end
-            if self.stopRequested then report.stopReason = 'Stopped by operator'; break end
-
-            -- 4. Sell and verify the stack left (or reduced in) that exact slot.
-            if cfg.POST_QUOTE_DELAY_MS > 0 then mq.delay(cfg.POST_QUOTE_DELAY_MS) end
-            do
-                local r1 = self.events.refusals
-                mq.cmdf('/sellitem %d', e.qty)
-                local gone = self:waitFor(cfg.SELL_TIMEOUT_MS, function()
-                    if self.events.refusals > r1 then return true end      -- refusal ends the wait early
-                    local x = inventory.readLocation(e.topSlot, e.sub)
-                    return x == nil or x.id ~= e.id or (type(x.stack) == 'number' and x.stack < e.qty)
-                end)
-                if self.events.refusals > r1 then
-                    local chk = inventory.readLocation(e.topSlot, e.sub)
-                    if chk and chk.id == e.id and chk.stack == e.qty then gone = false end
-                end
-                local after = inventory.readLocation(e.topSlot, e.sub)
-                local remaining = (after and after.id == e.id) and (after.stack or e.qty) or 0
-                local sold = e.qty - remaining
-                if sold > 0 then
-                    report.byId[e.id].sold = report.byId[e.id].sold + sold
-                    report.soldQty = report.soldQty + sold
-                end
-                if gone and remaining == 0 then
+                if outcome == 'ok' then
+                    report.stacksDone = report.stacksDone + 1          -- select_test success
+                elseif outcome == 'sold' then
                     report.stacksDone = report.stacksDone + 1
-                    log.info('sale.verified', { id = e.id, name = e.name, qty = sold, pack = e.pack, slot = e.sub and (e.sub + 1) or 'loose' })
-                elseif sold > 0 then
-                    if fail(e, ('Partial sale: %d of %d sold'):format(sold, e.qty)) == 'stop' then break end
-                    goto continue
+                elseif outcome == 'stopped' then
+                    report.stopReason = 'Stopped by operator'; break
+                elseif outcome == 'cursor' or outcome == 'hard' then
+                    report.stopReason = detail; fail(e, detail, true); break
                 else
-                    if self.stopRequested then report.stopReason = 'Stopped by operator (sale unconfirmed)'; break end
-                    local why = self.events.refusals > r1 and 'Merchant refused the sale (not interested)'
-                        or 'Sale not confirmed within timeout'
-                    if fail(e, why) == 'stop' then break end
+                    if fail(e, detail) == 'stop' then break end
                     goto continue
                 end
             end

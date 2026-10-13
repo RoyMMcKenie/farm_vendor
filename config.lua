@@ -41,7 +41,7 @@ local config = {}
 config.SCRIPT_NAME = 'magfarm_vendor'
 
 -- Version string shown in the window title and written to every log line set.
-config.VERSION = '1.1.0'
+config.VERSION = '1.1.1'
 
 -- Slash command registered with mq.bind for emergency control:
 --   /mfvendor stop   -> stop selling before the next item
@@ -108,8 +108,17 @@ config.SELL_TIMEOUT_MS = 4000
 config.QUOTE_TIMEOUT_MS = 3000
 
 -- Extra pause after the quote arrives and before /sellitem, so the client has
--- applied the quote. Range 0-2000.
-config.POST_QUOTE_DELAY_MS = 150
+-- applied the quote. Raised from 150 to 500 after Rune of Impetus was refused
+-- once right after a valid quote (v1.1.0 live test). Range 0-3000.
+config.POST_QUOTE_DELAY_MS = 500
+
+-- How many times to retry a sale the merchant refused AFTER it had sent a
+-- valid quote for that exact item (the item is re-selected and re-quoted
+-- first). Refusals with no quote are never retried. 0 disables. Range 0-2.
+config.SELL_REFUSAL_RETRIES = 1
+
+-- Wait before such a retry. Range 250-5000.
+config.RETRY_DELAY_MS = 1000
 
 -- Pause after each verified sale/selection before the next one. Gives the
 -- client and server time to settle and keeps the pace human-like. Range 0-5000.
@@ -279,7 +288,9 @@ local RANGES = {
     BETWEEN_ITEMS_DELAY_MS = { 0, 5000 },
     COIN_SETTLE_DELAY_MS   = { 0, 5000 },
     QUOTE_TIMEOUT_MS       = { 500, 10000 },
-    POST_QUOTE_DELAY_MS    = { 0, 2000 },
+    POST_QUOTE_DELAY_MS    = { 0, 3000 },
+    SELL_REFUSAL_RETRIES   = { 0, 2 },
+    RETRY_DELAY_MS         = { 250, 5000 },
     FIRST_PACK_SLOT        = { 23, 34 },
     LAST_PACK_SLOT         = { 23, 34 },
     INI_SCHEMA             = { 1, 1 },
