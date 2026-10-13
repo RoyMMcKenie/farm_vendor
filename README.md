@@ -1,93 +1,91 @@
 # Farm Vendor
 
-A MacroQuest Lua inventory seller built under the MagFarm engineering rules. It lists the items you carry, remembers the ones you check in a per character INI, and sells only what you confirm, one verified stack at a time.
+A MacroQuest Lua inventory seller. It lists what you carry, remembers the items you check in a per character INI, and sells only what you confirm, one verified stack at a time. Built under the MagFarm engineering rules: documented interfaces only, fail closed, staged testing.
 
-Version 1.2.0 built under the Specific engineering rules). Validated live in the client on 2026-10-13, so it ships in live mode; see TESTING.md.
+Version 1.2.1. Validated live in the client on 2026-10-13; ships in live mode.
 
-## Install
+## Install and run
 
-Copy the `Farm_Vendor` folder into your active MacroQuest `lua` folder so you have `lua/Farm_Vendor/init.lua`. Your INI and log live in the MacroQuest config folder, not here.
-
-Upgrading from `magfarm_vendor`: the first run copies your saved checks from the old INI automatically (the Activity Log shows `startup.selections_migrated`). After confirming your checks appear, you can delete the old `lua/magfarm_vendor` folder. The old INI and log in the config folder are left untouched and can be deleted whenever you like.
-
-Run it with:
+Copy the `Farm_Vendor` folder into your MacroQuest `lua` folder (`lua/Farm_Vendor/init.lua`), then:
 
 ```text
 /lua run Farm_Vendor
 ```
 
-No plugins are required beyond MQ2Lua, which provides Lua and ImGui.
+Only MQ2Lua is required (it provides Lua and ImGui).
+
+Upgrading from `magfarm_vendor`: the first run copies your saved checks from the old INI (log line `startup.selections_migrated`). The old file is never changed. Once your checks appear, you can delete `lua/magfarm_vendor`.
 
 ## Use
 
 1. Open a merchant yourself and empty your cursor.
-2. Check the items you want to sell. Previously saved checks are already ticked; new items always start unchecked.
-3. Optional: Save Selections to remember the checks without selling.
-4. Sell All Checked Items opens the confirmation window with the exact item list, quantities and estimated proceeds.
-5. Confirm Sale saves your checks, then processes each stack. Cancel in the confirmation window returns to the list with nothing saved or sold.
-6. Stop Selling (or `/fvendor stop`) stops before the next item. Completed sales cannot be undone.
-7. Cancel in the main window, or the window X, exits with no action and discards unsaved changes.
+2. Check the items to sell. Saved checks are pre ticked; new items start unchecked.
+3. Sell All Checked Items opens a confirmation window with the exact items, quantities and estimate.
+4. Confirm Sale saves your checks and sells each stack. Cancel there returns with nothing saved or sold.
+5. Stop Selling or `/fvendor stop` stops before the next item. Completed sales cannot be undone.
+6. Cancel or the window X exits and discards unsaved changes.
 
-Checking an item means all eligible carried copies of that item, across every bag that is not protected.
+A checked item means every eligible carried copy, in every unprotected bag.
 
 ## Modes
 
-| `config.SELL_MODE` | What happens on Confirm Sale |
+| `config.SELL_MODE` | Confirm Sale does |
 |---|---|
 | `preview` | Logs what would be sold. No game commands. |
-| `select_test` | Selects each stack in the merchant window and verifies the selection. Never sells. |
-| `live` (shipped setting) | Selects, verifies, sells with `/sellitem`, and verifies the stack left the bag. |
+| `select_test` | Selects each stack and waits for the merchant quote. Never sells. |
+| `live` (shipped) | Selects, waits for the quote, sells with `/sellitem`, verifies the stack left the bag. |
 
-A launch argument can lower the mode for one session (`preview` or `selecttest`). It can never raise it to live.
-
-## Safeguards
-
-* Never sells on launch. Remembered checks never replace confirmation.
-* Never navigates, targets, opens merchants, or moves cursor items.
-* Only pack slots are read. Equipped gear, bank, shared bank and the cursor are never touched.
-* Bags, protected packs, zero value items and unreadable items are excluded. NO DROP and Lore exclusions are optional settings.
-* Readiness must pass before selling: in game, cursor empty, no macro running, merchant open and loaded, selections file writable, protected bag list valid.
-* If inventory changed after you clicked Sell, the list is rebuilt and you confirm again.
-* Before each stack: exact slot reread, same item and quantity required. Selection verified by `Merchant.SelectedItem`, then the merchant's price quote must arrive before selling. "Not interested" fails that item immediately. Sale counted only when the stack is verified gone.
-* Items the open merchant gives no price for are excluded for that merchant (setting `EXCLUDE_UNPRICED_AT_MERCHANT`).
-* Every wait is bounded. Failures stop the run by default; a hard cap applies in skip mode. Cursor, merchant change or close, and a macro starting always stop the run.
-* The report shows measured coin change next to the estimate. Coin change includes anything else that changed your coin during the run.
-
-## Files
-
-| Location | Contents |
-|---|---|
-| `<MQ config>/Farm_Vendor_<server>_<character>.ini` | Your checks, optional `ProtectedBags=1,2`, `.bak` from the previous save |
-| `<MQ config>/Farm_Vendor_<server>_<character>.log` | Structured event log, rotated to `.log.1` at the size limit |
-
-Server and character names are percent encoded in file names. An INI with a different schema is kept read only and never overwritten.
-
-## Configuration
-
-All settings are in `config.lua`, each with a comment giving its purpose, range and default. Invalid values stop the script at startup with a list of what to fix.
+A launch argument (`preview` or `selecttest`) can lower the mode for one session, never raise it.
 
 ## Commands
 
 | Command | Effect |
 |---|---|
-| `/fvendor stop` | Stop selling before the next item |
+| `/fvendor stop` | Stop before the next item |
 | `/fvendor quit` | Stop if selling, then exit |
-| `/fvendor show` | Show the main window again |
+| `/fvendor show` | Show the window again |
 
-## Package layout
+## Safeguards
 
-| File | Responsibility |
+* Never sells on launch, never navigates, targets, opens merchants or moves cursor items.
+* Reads pack slots only. Bags, protected packs, zero value and unreadable items are excluded; NO DROP and Lore exclusions are optional. Items the open merchant will not price are skipped for that merchant.
+* Selling requires: in game, empty cursor, no macro running, merchant open and loaded, writable selections file, valid protected bag list.
+* Inventory changed after Sell: the list is rebuilt and you confirm again.
+* Per stack: slot reread, selection verified by `Merchant.SelectedItem`, merchant quote for that item required, sale counted only when the stack is gone. One retry if the merchant refuses right after a valid quote.
+* All waits are bounded. Failures stop the run by default. Cursor items, merchant change or close, and a macro starting always stop it.
+* The report shows measured coin change beside the estimate.
+
+## Files
+
+| Location | Contents |
 |---|---|
-| `init.lua` | Startup checks, request handling, main loop, shutdown |
-| `config.lua` | Commented parameters and validation |
-| `log.lua` | Structured console, file and Activity Log events |
+| `<MQ config>/Farm_Vendor_<server>_<character>.ini` | Checks, optional `ProtectedBags=1,2`, `.bak` of the previous save |
+| `<MQ config>/Farm_Vendor_<server>_<character>.log` | Structured log, rotated to `.log.1` |
+
+All settings are in `config.lua`, each commented with purpose, range and default. Invalid values stop startup with a list of what to fix.
+
+## Package
+
+| File | Role |
+|---|---|
+| `init.lua` | Startup, request handling, main loop, shutdown |
+| `config.lua` | Parameters and validation |
+| `log.lua` | Console, file and Activity Log events |
 | `store.lua` | INI parsing and atomic saves |
-| `inventory.lua` | Read only inventory scan and coin reading |
-| `seller.lua` | Readiness checks, sale proposal, guarded worker |
+| `inventory.lua` | Read only inventory and coin scan |
+| `seller.lua` | Readiness, proposal, guarded selling worker |
 | `ui.lua` | ImGui windows; sets request flags only |
 | `INTERFACES.md` | Every external interface and its documentation |
-| `TESTING.md` | Offline results and staged client checks |
+| `TESTING.md` | Offline tests and client stages |
+| `CHANGELOG.md` | Version history |
 
-## Credit
+## Credits
 
-Rewritten from the workflow of two community macros, `sellitem.mac` and `AutoVendor.mac`. Their authors retain credit for the original macros. None of their unverified commands or default sell behavior was carried over.
+Farm Vendor is a new Lua program, but its workflow comes from two community macros. Thanks to their authors:
+
+* **sellitem.mac**, bulk selling of one named item. Published on RedGuides as [Sellitem.mac by Cannonballdex](https://www.redguides.com/community/resources/authors/cannonballdex.233812/) (2021, updated 2023). Its select then sell loop follows the pattern in [Super Simple Sell Items Macro by sl968](https://www.redguides.com/community/threads/super-simple-sell-items-macro.70441/) (2019).
+* **AutoVendor.mac**, an INI sell list built from your inventory. [AutoVendor 3.6 by Ionis](https://www.redguides.com/community/resources/autovendor.1930/) on RedGuides ([release thread](https://www.redguides.com/community/threads/autovendor.75143/)).
+
+The macro copies used for this rewrite were not kept, so these credits point to the published versions they match. If your copy names a different author in its header, credit that author instead. No code was copied: Farm Vendor reuses the ideas (a remembered sell list, then select and sell each stack) and replaces the commands with documented MacroQuest interfaces.
+
+Also thanks to the [MacroQuest](https://docs.macroquest.org/) developers, the [mq-definitions](https://github.com/macroquest/mq-definitions) project used to verify every Lua and ImGui call, and [RedGuides](https://www.redguides.com/docs/) for its command reference.

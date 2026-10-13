@@ -1,54 +1,44 @@
 # Changelog
 
+## 1.2.1 (2026-10-13)
+
+Documentation and standards review. No selling logic changed.
+
+* Credits: original macro authors named (Cannonballdex and sl968 for sellitem.mac, Ionis for AutoVendor.mac) in README.md and init.lua.
+* ImGui loaded with the documented `require('ImGui')`; flags combined with `bit32.bor` (mq-definitions), LuaJIT `bit` as fallback.
+* UI: every ImGui begin/end and push/pop pair now stays balanced even if drawing raises an error (table rows, tooltips, colored text, confirm list, buttons).
+* All Lua, TLO and ImGui calls rechecked against docs.macroquest.org, RedGuides docs and mq-definitions; INTERFACES.md updated.
+* README, INTERFACES, TESTING and CHANGELOG shortened.
+* Offline tests: 31 of 31 (new: ImGui load path and stack balance under draw errors).
+
 ## 1.2.0 (2026-10-13)
 
-Renamed from MagFarm Vendor (`magfarm_vendor`) to Farm Vendor (`Farm_Vendor`); the tool is not magician specific. It is still built under the MagFarm engineering rules. No selling logic changed.
+Renamed from MagFarm Vendor (`magfarm_vendor`) to Farm Vendor (`Farm_Vendor`); the tool is not magician specific.
 
-* Folder `lua/Farm_Vendor`, launched with `/lua run Farm_Vendor`; modules load as `Farm_Vendor.<module>`.
-* Emergency command `/fvendor stop | quit | show` (was `/mfvendor`).
-* Console prefix `[FarmVendor]`; window title "Farm Vendor".
-* Files are now `Farm_Vendor_<server>_<character>.ini` and `.log`. On first run the old `magfarm_vendor_...ini` is copied once if no new file exists; the old file is never changed. Controlled by `config.LEGACY_SCRIPT_NAME`.
-* `SELL_MODE` ships as `live` because v1.1.1 completed a full live run in the client. Return to `preview` or `select_test` after any change to selling code.
-* Offline tests: 28 of 28, including three rename tests.
-
-History below uses the old name.
-
+* Folder `lua/Farm_Vendor`; command `/fvendor` (was `/mfvendor`); prefix `[FarmVendor]`.
+* Files `Farm_Vendor_<server>_<character>.ini/.log`. The old INI is copied once if no new one exists and is never changed (`config.LEGACY_SCRIPT_NAME`).
+* Ships in `live` mode after the v1.1.1 client run.
+* Offline tests: 28 of 28.
 
 ## 1.1.1 (2026-10-13)
 
-Second live test (v1.1.0): Wax Flower x28, Words of Incarceration x4 and Words of Burnishing x2 sold and verified; coin change 13p 5g 1s matched. Rune of Impetus was quoted ("2p 5g 7s 1c per Rune of Impetus"), refused once, then quoted again, while the merchant window still showed it for sale.
+Live test: three items sold; Rune of Impetus was quoted, refused once, then quoted again.
 
-* `POST_QUOTE_DELAY_MS` default raised from 150 to 500.
-* New `SELL_REFUSAL_RETRIES` (default 1) and `RETRY_DELAY_MS` (default 1000): a refusal that follows a valid quote for that exact item is retried once, after re-selecting and getting a new quote. Refusals with no quote are never retried. Partial sales are never retried.
-* A quote of the form "per <item>" must name the selected item; quotes for another item are logged and ignored. Backtick and apostrophe are treated as equal (Ap`Sagor and Ap'Sagor).
-* Select, quote and sell are now separate functions (`selectAndQuote`, `sellOnce`) for easier review.
+* `POST_QUOTE_DELAY_MS` raised from 150 to 500.
+* `SELL_REFUSAL_RETRIES` (1) and `RETRY_DELAY_MS` (1000): a refusal right after a valid quote is retried once after reselecting. Refusals with no quote and partial sales are never retried.
+* Quotes must name the selected item; backtick and apostrophe match.
 * Offline tests: 25 of 25.
-
 
 ## 1.1.0 (2026-10-13)
 
-Fixes the first live test failure, where Nodding Blue Lily was refused with "I am not interested in buying that." The sale was sent before the merchant's price quote arrived. Selling the same item by hand after the quote worked.
+Live test: Nodding Blue Lily was refused because the sale was sent before the merchant quote.
 
-* After a verified selection the worker now waits for the merchant quote chat line (`QUOTE_TIMEOUT_MS`, default 3 s), then a short `POST_QUOTE_DELAY_MS`, before `/sellitem`.
-* "Not interested" at selection or at sale fails that item at once instead of waiting out the timeout. No quote at all fails closed.
-* Selection test mode also verifies the quote, so it catches merchant refusals without selling.
-* New `EXCLUDE_UNPRICED_AT_MERCHANT` (default on): items the open merchant gives no price for are excluded for that merchant, and your remembered check is kept.
-* The list rescans automatically when a merchant window opens or closes.
-* The estimate now totals priced items and names how many item types are unpriced, instead of showing "unavailable".
-* Waits now poll with `mq.doevents()`; idle merchant chat is flushed so old lines never count.
-* Offline tests: 22 of 22, including a regression test that reproduces the v1.0.0 failure.
-
+* Waits for the quote line (`QUOTE_TIMEOUT_MS`, 3 s) before `/sellitem`. "Not interested" fails the item at once; no quote fails closed.
+* Selection test mode also waits for the quote.
+* `EXCLUDE_UNPRICED_AT_MERCHANT` (on): unpriced items skipped for that merchant, check kept.
+* Rescans when a merchant opens or closes; estimate totals priced items only.
+* Offline tests: 22 of 22.
 
 ## 1.0.0 (2026-10-13)
 
-Initial release of MagFarm Vendor, a Lua rewrite of the `sellitem.mac` and `AutoVendor.mac` logic under the MagFarm rules.
-
-* Inventory checklist covering pack1 to pack12, with search, checked only and excluded filters.
-* Per server and per character INI selections with schema protection, atomic saves, backups and preservation of unknown sections.
-* Separate confirmation window; inventory changes force a new confirmation.
-* Guarded selling worker with exact slot revalidation, verified selection, verified sale, bounded waits, failure policy and a failure cap.
-* Three staged modes: preview (default), select_test, live.
-* Readiness panel, Stop Selling control, `/mfvendor` emergency commands.
-* Structured logging to console, rotating file and the in window Activity Log.
-* Measured coin change reported beside the SellPrice estimate.
-* Offline test harness: 17 of 17 scenarios passing. Client stages pending.
+First release as MagFarm Vendor: a Lua rewrite of the sellitem.mac and AutoVendor.mac workflow under the MagFarm rules. Checklist UI, per character INI, confirmation window, guarded worker with verified selection and sale, three modes, `/mfvendor` commands, structured logging, measured coin change. Offline tests: 17 of 17.

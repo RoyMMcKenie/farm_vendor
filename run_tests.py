@@ -23,7 +23,7 @@ function H.countCmd(p) local c=0 for _, x in ipairs(H.cmds) do if x:find(p,1,tru
 function H.stack(slot, sub) local pk=W.packs[slot]; local it = sub and pk.items[sub] or pk.item; return it and it.stack or 0 end
 '''
 
-def scenario(name, setup, check, mode=None, ini=None, cfg=None, args=(), legacy=None):
+def scenario(name, setup, check, mode=None, ini=None, cfg=None, args=(), legacy=None, expect_ui_error=False):
     d = tempfile.mkdtemp()
     lua = luajit21.LuaRuntime(unpack_returned_tuples=True)
     lua.execute(f"package.path = [[{ROOT}/?.lua;{ROOT}/?/init.lua;]] .. package.path")
@@ -48,7 +48,7 @@ def scenario(name, setup, check, mode=None, ini=None, cfg=None, args=(), legacy=
         ok, msg = check(lua, d, err)
     except Exception as e:
         ok, msg = False, f'check raised {e}'
-    if ok and lua.eval("HARNESS.outHas('ui.render_error') or HARNESS.outHas('internal_error')"):
+    if ok and not expect_ui_error and lua.eval("HARNESS.outHas('ui.render_error') or HARNESS.outHas('internal_error')"):
         ok, msg = False, 'UI or internal error logged'
     if not ok:
         out = '\n'.join(list(lua.globals().HARNESS.out.values())[-25:])
@@ -185,7 +185,7 @@ H.on(function() return HARNESS.frame>8 end, function() H.press('Cancel##fv_cance
 # 12 stop via bind mid-run
 def c12(lua, d, err):
     return (err is None and G(lua,"HARNESS.outHas('Stopped by operator')") and G(lua,"HARNESS.stack(24,nil)")==3), 'stopped'
-scenario('live: /mfvendor stop halts before the next item', r'''
+scenario('live: /fvendor stop halts before the next item', r'''
 H.std()
 H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
 H.on(function() return HARNESS.windows['Confirm Sale##fv_confirm'] end, function() H.press('Confirm Sale') end)
@@ -355,10 +355,38 @@ def c28(lua, d, err):
     return (err is None and G(lua,"HARNESS.outHas('[FarmVendor]')") and G(lua,"HARNESS.sawTitle==true")), 'names'
 scenario('rename: console prefix and window title use the new name', r"""
 H.std()
-local B = ImGui.Begin
-ImGui.Begin = function(n, ...) if n:find('Farm Vendor v1.2.0',1,true)==1 then HARNESS.sawTitle=true end return B(n, ...) end
+local ImGui = require('ImGui'); local B = ImGui.Begin
+ImGui.Begin = function(n, ...) if n:find('Farm Vendor v1.2.1',1,true)==1 then HARNESS.sawTitle=true end return B(n, ...) end
 H.on(function() return HARNESS.frame>3 end, function() H.press('Cancel##fv_cancel') end)
 """, c28)
+
+
+# 29 ImGui loaded through the documented require('ImGui'); all pairs balanced
+def c29(lua, d, err):
+    return (err is None and G(lua,"HARNESS.imguiRequired==true") and G(lua,"HARNESS.imbalance==nil")), 'require'
+scenario("standards: ImGui loaded with require('ImGui'); Begin/End pairs balanced every frame", r"""
+H.std()
+H.on(function() return HARNESS.frame>3 end, function() H.press('Cancel##fv_cancel') end)
+""", c29)
+
+# 30 draw error inside a table row is logged; ImGui stack stays balanced
+def c30(lua, d, err):
+    return (err is None and G(lua,"HARNESS.outHas('ui.render_error')") and G(lua,"HARNESS.imbalance==nil")), 'row error'
+scenario('standards: draw error inside a table row is logged and stacks stay balanced', r"""
+H.std(); HARNESS.failText = 'Bone Chips'
+H.on(function() return HARNESS.frame>3 end, function() H.press('Cancel##fv_cancel') end)
+""", c30, expect_ui_error=True)
+
+# 31 draw error inside the confirm list is logged; stacks balanced
+def c31(lua, d, err):
+    return (err is None and G(lua,"HARNESS.outHas('ui.render_error')") and G(lua,"HARNESS.imbalance==nil")), 'confirm error'
+scenario('standards: draw error inside the Confirm Sale list is logged and stacks stay balanced', r"""
+H.std()
+H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##fv_confirm'] end, function() HARNESS.failText = '   x' end)
+H.on(function() return H.outHas('ui.render_error') end, function() HARNESS.failText = nil; H.press('Cancel##fv_confirm_cancel') end)
+H.on(function() return true end, function() H.press('Cancel##fv_cancel') end)
+""", c31, mode='preview', ini=INI_OK, expect_ui_error=True)
 
 p = sum(1 for r in results if r[1])
 for n, ok, m in results:

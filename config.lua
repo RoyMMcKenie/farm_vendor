@@ -47,7 +47,7 @@ config.SCRIPT_NAME = 'Farm_Vendor'
 config.LEGACY_SCRIPT_NAME = 'magfarm_vendor'
 
 -- Version string shown in the window title and written to every log line set.
-config.VERSION = '1.2.0'
+config.VERSION = '1.2.1'
 
 -- Slash command registered with mq.bind for emergency control:
 --   /fvendor stop   -> stop selling before the next item
@@ -71,7 +71,7 @@ config.BIND_COMMAND = '/fvendor'
 -- A launch argument can DOWNGRADE the mode for one session
 -- (`/lua run Farm_Vendor preview` or `... selecttest`) but can never upgrade
 -- it to live. Live is enabled only by editing this line.
--- v1.2.0 ships in 'live' because every stage passed in Roy's client on
+-- Ships in 'live' because every stage passed in Roy's client on
 -- 2026-10-13 (preview, then live runs; v1.1.1 completed a full checked list
 -- on Merchant Wyn`las). Change back to 'preview' or 'select_test' after any
 -- code change that touches selling, and re-test before returning to 'live'.

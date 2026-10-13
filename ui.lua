@@ -1,6 +1,6 @@
 --[[
 Farm_Vendor/ui.lua
-=====================
+==================
 
 ImGui windows for Farm Vendor.
 
@@ -13,9 +13,10 @@ Rules
   * The UI NEVER issues game commands and NEVER calls mq.delay. Buttons only
     set request flags in app.requests; init.lua's main loop performs the work
     (MacroQuest: mq.delay cannot run inside an ImGui callback).
-  * Every Begin/BeginChild is matched by End/EndChild even if drawing fails;
-    the drawing body is protected with pcall so a rendering error is logged
-    instead of crashing the client UI stack.
+  * Every Begin/BeginChild/BeginTable/PushID/PushStyleColor/BeginDisabled is
+    matched by its End/Pop call even if drawing fails: each paired region's
+    body runs inside pcall, so a rendering error is logged (UI error) instead
+    of leaving the ImGui stack unbalanced.
   * Text that may contain '%' (paths, item names, log lines) is drawn with
     TextUnformatted so it is never treated as a format string.
   * Status rows always render (reserved space) so controls do not jump when a
@@ -25,18 +26,21 @@ ImGui calls used are all present in the MacroQuest mq-definitions ImGui
 bindings (see INTERFACES.md).
 ]]
 
-local bit = require('bit')        -- LuaJIT built-in bit operations library
 local inventory = require('Farm_Vendor.inventory')
 
 local ui = {}
 
--- ImGui is exposed by MQ2Lua as a global (mq-definitions: ---@meta ImGui).
-local ImGui = rawget(_G, 'ImGui')
-if type(ImGui) ~= 'table' then
-    local ok, mod = pcall(require, 'ImGui')
-    if ok and type(mod) == 'table' then ImGui = mod end
-end
+-- ImGui bindings: require('ImGui') is the documented form (mq-definitions,
+-- RedGuides "MQ VS Code Lua Autocomplete Definition Library"). Loaded with
+-- pcall so a missing binding is reported at startup instead of crashing.
+local okImGui, ImGui = pcall(require, 'ImGui')
+if not okImGui or type(ImGui) ~= 'table' then ImGui = rawget(_G, 'ImGui') end
 ui.available = type(ImGui) == 'table'
+
+-- Bit operations for combining ImGui flags: bit32 is documented by
+-- mq-definitions (_Bit32.lua). LuaJIT's built-in 'bit' (MQ2Lua runs on LuaJIT
+-- 2.1) provides the same bor and is used only if bit32 is absent.
+local bit32 = rawget(_G, 'bit32') or require('bit')
 
 local COLOR = {
     ok    = { 0.35, 0.85, 0.35, 1.0 },
@@ -48,15 +52,17 @@ local COLOR = {
 
 local function colored(c, text)
     ImGui.PushStyleColor(ImGuiCol.Text, c[1], c[2], c[3], c[4])
-    ImGui.TextUnformatted(text)
-    ImGui.PopStyleColor(1)
+    local ok, err = pcall(ImGui.TextUnformatted, tostring(text))
+    ImGui.PopStyleColor(1)                  -- always paired with the Push above
+    if not ok then error(err, 0) end
 end
 
 local function tooltip(text)
     if ImGui.IsItemHovered() then
         ImGui.BeginTooltip()
-        ImGui.TextUnformatted(text)
-        ImGui.EndTooltip()
+        local ok, err = pcall(ImGui.TextUnformatted, tostring(text))
+        ImGui.EndTooltip()                  -- always paired with BeginTooltip
+        if not ok then error(err, 0) end
     end
 end
 
@@ -108,10 +114,14 @@ local function drawReadiness(app)
     end
     if ImGui.IsItemHovered() then
         ImGui.BeginTooltip()
-        for _, c in ipairs(checks) do
-            colored(c.ok and COLOR.ok or COLOR.bad, ('[%s] %s - %s'):format(c.ok and 'OK' or 'BLOCKED', c.name, c.detail))
-        end
+        local ok, err = pcall(function()
+            for _, c in ipairs(checks) do
+                colored(c.ok and COLOR.ok or COLOR.bad, ('[%s] %s - %s'):format(c.ok and 'OK' or 'BLOCKED',
+                    tostring(c.name), tostring(c.detail)))
+            end
+        end)
         ImGui.EndTooltip()
+        if not ok then error(err, 0) end
     end
     -- Reserved line: always drawn so layout does not shift.
     if #blocked > 0 then
@@ -151,7 +161,7 @@ end
 local function drawTable(app)
     local scan = app.scan
     if not scan then colored(COLOR.dim, 'Scanning inventory...'); return end
-    local flags = bit.bor(ImGuiTableFlags.RowBg, ImGuiTableFlags.Borders,
+    local flags = bit32.bor(ImGuiTableFlags.RowBg, ImGuiTableFlags.Borders,
         ImGuiTableFlags.ScrollY, ImGuiTableFlags.Resizable, ImGuiTableFlags.SizingStretchProp)
     local _, availY = ImGui.GetContentRegionAvail()
     local reserved = app.cfg.ACTIVITY_LOG_HEIGHT + 190      -- room for buttons, progress, log
@@ -171,16 +181,17 @@ local function drawTable(app)
             for _, row in ipairs(scan.rows) do
                 if rowVisible(app, row) then
                     ImGui.PushID(row.id)
+                    local rowOk, rowErr = pcall(function()
                     ImGui.TableNextRow()
                     ImGui.TableNextColumn()
                     ImGui.BeginDisabled(app.seller.running or not row.eligible)
                     local val, pressed = ImGui.Checkbox('##sell', app.checked[row.id] == true)
+                    ImGui.EndDisabled()
                     if pressed and row.eligible and not app.seller.running then
                         app.checked[row.id] = val or nil
                         app.names[row.id] = row.name
                         app.dirty = true
                     end
-                    ImGui.EndDisabled()
                     ImGui.TableNextColumn(); ImGui.TextUnformatted(row.name)
                     tooltip(('Item ID %d'):format(row.id))
                     ImGui.TableNextColumn(); ImGui.TextUnformatted(tostring(row.qty))
@@ -205,7 +216,9 @@ local function drawTable(app)
                     else
                         ImGui.TextUnformatted(' ')
                     end
+                    end)
                     ImGui.PopID()
+                    if not rowOk then error(rowErr, 0) end
                 end
             end
         end)
@@ -241,6 +254,7 @@ local function drawButtons(app)
 
     local running = app.seller.running
     ImGui.BeginDisabled(running)
+    local ok, err = pcall(function()
     if ImGui.Button('Clear Checks##fv_clear') then
         -- Clears only currently listed items; remembered items not carried stay remembered.
         for _, row in ipairs(app.scan and app.scan.rows or {}) do
@@ -250,18 +264,22 @@ local function drawButtons(app)
     tooltip('Unchecks listed items. Remembered items you are not carrying are kept.')
     ImGui.SameLine()
     ImGui.BeginDisabled(app.store.readonly or not app.dirty)
-    if ImGui.Button('Save Selections##fv_save') then app.requests.save = true end
+    local save = ImGui.Button('Save Selections##fv_save')
     ImGui.EndDisabled()
+    if save then app.requests.save = true end
     ImGui.SameLine()
     ImGui.BeginDisabled(types == 0 or not app.readyToSell)
-    if ImGui.Button('Sell All Checked Items##fv_sell') then app.requests.prepare = true end
+    local sell = ImGui.Button('Sell All Checked Items##fv_sell')
     ImGui.EndDisabled()
+    if sell then app.requests.prepare = true end
     if types == 0 then tooltip('Check at least one item first.')
     elseif not app.readyToSell then tooltip('Blocked: hover the Readiness line for details.') end
     ImGui.SameLine()
     if ImGui.Button('Cancel##fv_cancel') then app.requests.quit = true end
     tooltip('Exit with no action. Unsaved checkbox changes are discarded.')
+    end)
     ImGui.EndDisabled()
+    if not ok then error(err, 0) end
 end
 
 local function drawProgress(app)
@@ -269,8 +287,9 @@ local function drawProgress(app)
     if s.running then
         colored(COLOR.warn, ('Processing %d of %d: %s'):format(s.progress.index, s.progress.total, s.progress.current))
         ImGui.PushStyleColor(ImGuiCol.Button, 0.70, 0.15, 0.15, 1.0)
-        if ImGui.Button('Stop Selling##fv_stop', 160, 0) then s:requestStop() end
+        local stop = ImGui.Button('Stop Selling##fv_stop', 160, 0)
         ImGui.PopStyleColor(1)
+        if stop then s:requestStop() end
         ImGui.SameLine()
         colored(COLOR.dim, s.stopRequested and 'Stopping before the next item...' or 'Stops before the next item. Completed sales cannot be undone.')
     elseif s.lastReport then
@@ -294,10 +313,14 @@ local function drawProgress(app)
         ImGui.TextUnformatted(detail)
         if #r.failures > 0 and ImGui.IsItemHovered() then
             ImGui.BeginTooltip()
-            for _, f in ipairs(r.failures) do
-                ImGui.TextUnformatted(('%s (pack%d %s): %s'):format(f.name, f.pack, f.sub and ('slot ' .. (f.sub + 1)) or 'loose', f.reason))
-            end
+            local ok, err = pcall(function()
+                for _, f in ipairs(r.failures) do
+                    ImGui.TextUnformatted(('%s (pack%s %s): %s'):format(tostring(f.name), tostring(f.pack),
+                        f.sub and ('slot ' .. (f.sub + 1)) or 'loose', tostring(f.reason)))
+                end
+            end)
             ImGui.EndTooltip()
+            if not ok then error(err, 0) end
         end
     else
         colored(COLOR.dim, ' '); ImGui.TextUnformatted(' ')   -- reserved rows
@@ -347,17 +370,22 @@ local function drawConfirm(app)
             ImGui.TextUnformatted('All eligible copies of each listed item will be processed.')
             ImGui.TextUnformatted('Protected bags and excluded stacks are never touched.')
             ImGui.Separator()
+            local listOk, listErr = true, nil
             if ImGui.BeginChild('##fv_confirm_list', 0, -40, ImGuiChildFlags.Borders) then
-                for _, it in ipairs(p.items) do
-                    ImGui.TextUnformatted(('%-40s x%d  (%d stack%s)  %s'):format(
-                        it.name, it.qty, it.stacks, it.stacks == 1 and '' or 's',
-                        it.unitEst and ('~' .. coin(it.unitEst * it.qty)) or ''))
-                end
+                listOk, listErr = pcall(function()
+                    for _, it in ipairs(p.items) do
+                        ImGui.TextUnformatted(('%-40s x%d  (%d stack%s)  %s'):format(
+                            it.name, it.qty, it.stacks, it.stacks == 1 and '' or 's',
+                            it.unitEst and ('~' .. coin(it.unitEst * it.qty)) or ''))
+                    end
+                end)
             end
             ImGui.EndChild()
+            if not listOk then error(listErr, 0) end
             ImGui.PushStyleColor(ImGuiCol.Button, 0.15, 0.50, 0.15, 1.0)
-            if ImGui.Button('Confirm Sale##fv_confirm_btn', 140, 0) then app.requests.confirm = true end
+            local confirm = ImGui.Button('Confirm Sale##fv_confirm_btn', 140, 0)
             ImGui.PopStyleColor(1)
+            if confirm then app.requests.confirm = true end
             ImGui.SameLine()
             if ImGui.Button('Cancel##fv_confirm_cancel', 100, 0) then app.requests.cancelConfirm = true end
         end)

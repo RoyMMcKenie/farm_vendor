@@ -154,16 +154,37 @@ end
 local ImGui = {}
 setmetatable(ImGui, { __index = function(_, k) return function() return nil end end })
 H.texts = {}
-function ImGui.Begin(name) H.windows[name]=true; return true, true end
-function ImGui.BeginTable() return true end
-function ImGui.BeginChild() return true end
+-- Stack balance tracking: every Begin/Push must be closed within the frame.
+H.imstack = {}
+local function push(k) H.imstack[#H.imstack+1] = k end
+local function pop(k)
+  local top = H.imstack[#H.imstack]
+  if top ~= k then H.imbalance = ('pop %s but top is %s'):format(k, tostring(top)) end
+  H.imstack[#H.imstack] = nil
+end
+function ImGui.Begin(name) H.windows[name]=true; push('Window'); return true, true end
+function ImGui.End() pop('Window') end
+function ImGui.BeginTable() push('Table'); return true end
+function ImGui.EndTable() pop('Table') end
+function ImGui.BeginChild() push('Child'); return true end
+function ImGui.EndChild() pop('Child') end
+function ImGui.BeginDisabled() push('Disabled') end
+function ImGui.EndDisabled() pop('Disabled') end
+function ImGui.BeginTooltip() push('Tooltip') end
+function ImGui.EndTooltip() pop('Tooltip') end
+function ImGui.PushStyleColor() push('Color') end
+function ImGui.PopStyleColor() pop('Color') end
 function ImGui.GetContentRegionAvail() return 700, 500 end
-function ImGui.TextUnformatted(t) H.texts[#H.texts+1]=t end
+function ImGui.TextUnformatted(t)
+  if type(t) ~= 'string' then error('TextUnformatted needs a string') end
+  if H.failText and t:find(H.failText, 1, true) then error('injected draw error for '..t) end
+  H.texts[#H.texts+1]=t
+end
 function ImGui.InputText(l, t) return t, false end
 function ImGui.IsItemHovered() return false end
 local curId
-function ImGui.PushID(id) curId = id end
-function ImGui.PopID() curId = nil end
+function ImGui.PushID(id) curId = id; push('ID') end
+function ImGui.PopID() curId = nil; pop('ID') end
 function ImGui.Button(label)
   for i, p in ipairs(H.presses) do if label:find(p, 1, true) == 1 then table.remove(H.presses, i); H.pressed[#H.pressed+1]=label; return true end end
   return false
@@ -172,7 +193,11 @@ function ImGui.Checkbox(label, v)
   if curId and H.checks[curId] ~= nil then local nv = H.checks[curId]; H.checks[curId] = nil; return nv, true end
   return v, false
 end
-_G.ImGui = ImGui
+-- MQ2Lua provides ImGui via require('ImGui'); the harness does the same so the
+-- documented load path is exercised. bit32 is provided as in MQ2Lua.
+package.preload['ImGui'] = function() H.imguiRequired = true; return ImGui end
+_G.ImGui = nil
+_G.bit32 = _G.bit32 or require('bit')
 _G.ImGuiCol = { Text=0, Button=21 }
 _G.ImGuiCond = { FirstUseEver=4, Appearing=8 }
 _G.ImGuiWindowFlags = { NoCollapse=32 }
@@ -191,7 +216,12 @@ function H.tickFrame()
   end
   H.lines = keep
   H.windows = {}; H.texts = {}
-  if H.render then H.render() end
+  if H.render then
+    H.imstack = {}
+    H.render()
+    if #H.imstack > 0 then H.imbalance = 'unclosed: ' .. table.concat(H.imstack, ',') end
+    if H.imbalance then error('harness: ImGui stack imbalance: ' .. H.imbalance) end
+  end
   local st = H.steps[1]
   if st and st.when() then table.remove(H.steps, 1); st.act() end
   if H.frame > 20000 then error('harness: frame limit') end

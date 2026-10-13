@@ -24,13 +24,14 @@ Name history
   MagFarm engineering rules. Saved selections are copied over once (see
   config.LEGACY_SCRIPT_NAME).
 
-Origin and credit
-  Rewritten from the logic of two community macros reviewed with Roy:
-  sellitem.mac (exact-name bulk seller) and AutoVendor.mac (inventory-built INI
-  sell list). Their workflows informed the design; none of their unverified
-  commands, Find window parsing, numeric comparisons, auto-navigation, or
-  default-to-Sell behavior was carried over. Original authorship of those
-  macros belongs to their respective authors.
+Credits
+  Workflow based on two community macros (no code copied):
+    sellitem.mac   Sellitem.mac by Cannonballdex (RedGuides, 2021-2023); its
+                   select then sell loop follows "Super Simple Sell Items
+                   Macro" by sl968 (RedGuides, 2019).
+    AutoVendor.mac AutoVendor 3.6 by Ionis (RedGuides, 2020-2021).
+  Links and details: README.md, Credits. Interfaces verified against
+  docs.macroquest.org, RedGuides docs and mq-definitions (INTERFACES.md).
 
 Architecture (one owner per responsibility)
   config.lua     commented parameters + validation
