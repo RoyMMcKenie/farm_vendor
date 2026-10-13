@@ -1,10 +1,14 @@
 # Changelog
 
+## 1.2.2 (2026-10-13)
+
+Documentation only. Credits confirmed by Roy: Sellitem.mac by Cannonballdex and AutoVendor 3.6 by Ionis. Removed the unconfirmed sl968 reference and the "most likely match" caveat.
+
 ## 1.2.1 (2026-10-13)
 
 Documentation and standards review. No selling logic changed.
 
-* Credits: original macro authors named (Cannonballdex and sl968 for sellitem.mac, Ionis for AutoVendor.mac) in README.md and init.lua.
+* Credits: original macro authors added to README.md and init.lua.
 * ImGui loaded with the documented `require('ImGui')`; flags combined with `bit32.bor` (mq-definitions), LuaJIT `bit` as fallback.
 * UI: every ImGui begin/end and push/pop pair now stays balanced even if drawing raises an error (table rows, tooltips, colored text, confirm list, buttons).
 * All Lua, TLO and ImGui calls rechecked against docs.macroquest.org, RedGuides docs and mq-definitions; INTERFACES.md updated.

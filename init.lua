@@ -26,10 +26,8 @@ Name history
 
 Credits
   Workflow based on two community macros (no code copied):
-    sellitem.mac   Sellitem.mac by Cannonballdex (RedGuides, 2021-2023); its
-                   select then sell loop follows "Super Simple Sell Items
-                   Macro" by sl968 (RedGuides, 2019).
-    AutoVendor.mac AutoVendor 3.6 by Ionis (RedGuides, 2020-2021).
+    Sellitem.mac    by Cannonballdex (RedGuides)
+    AutoVendor 3.6  by Ionis (RedGuides)
   Links and details: README.md, Credits. Interfaces verified against
   docs.macroquest.org, RedGuides docs and mq-definitions (INTERFACES.md).
 

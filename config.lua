@@ -47,7 +47,7 @@ config.SCRIPT_NAME = 'Farm_Vendor'
 config.LEGACY_SCRIPT_NAME = 'magfarm_vendor'
 
 -- Version string shown in the window title and written to every log line set.
-config.VERSION = '1.2.1'
+config.VERSION = '1.2.2'
 
 -- Slash command registered with mq.bind for emergency control:
 --   /fvendor stop   -> stop selling before the next item

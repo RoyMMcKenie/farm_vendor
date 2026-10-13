@@ -6,7 +6,7 @@ MagFarm rule: documented, then tested, then enabled. Passed checks stay passed u
 
 `python tests/run_tests.py` (needs `pip install lupa`) runs the real package under LuaJIT against a mock MacroQuest client (`tests/harness.lua`). The mock merchant quotes after a delay and refuses a sale sent before the quote, as the client did. The harness also fails any frame that leaves an ImGui begin/end or push/pop pair open. These tests prove program logic, not client behavior.
 
-Result for v1.2.1: 31 of 31 passed.
+Result for v1.2.2: 31 of 31 passed.
 
 | Area | Scenarios |
 |---|---|
@@ -65,7 +65,7 @@ Stage 3, live:
 
 | Check | Expected |
 |---|---|
-| R.1 First `/lua run Farm_Vendor` | Title "Farm Vendor v1.2.1"; `startup.selections_migrated` logged on the first run only |
+| R.1 First `/lua run Farm_Vendor` | Title "Farm Vendor v1.2.2"; `startup.selections_migrated` logged on the first run only |
 | R.2 Checks | Same remembered items ticked as before |
 | R.3 `/fvendor show` | Window reappears |
 | R.4 Normal live run | Same results as 1.1.1; no `ui.render_error` lines |

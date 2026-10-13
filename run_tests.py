@@ -356,7 +356,7 @@ def c28(lua, d, err):
 scenario('rename: console prefix and window title use the new name', r"""
 H.std()
 local ImGui = require('ImGui'); local B = ImGui.Begin
-ImGui.Begin = function(n, ...) if n:find('Farm Vendor v1.2.1',1,true)==1 then HARNESS.sawTitle=true end return B(n, ...) end
+ImGui.Begin = function(n, ...) if n:find('Farm Vendor v1.2.2',1,true)==1 then HARNESS.sawTitle=true end return B(n, ...) end
 H.on(function() return HARNESS.frame>3 end, function() H.press('Cancel##fv_cancel') end)
 """, c28)
 

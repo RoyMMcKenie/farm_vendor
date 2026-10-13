@@ -1,6 +1,6 @@
 # Farm Vendor: Interface Ledger
 
-MagFarm rule: every command, TLO member, Lua binding and ImGui call must be documented by MacroQuest or RedGuides before it is used. This is the complete list; anything not here is not used. Last audited for v1.2.1 against docs.macroquest.org, RedGuides docs and mq-definitions.
+MagFarm rule: every command, TLO member, Lua binding and ImGui call must be documented by MacroQuest or RedGuides before it is used. This is the complete list; anything not here is not used. Last audited for v1.2.1 (unchanged in 1.2.2) against docs.macroquest.org, RedGuides docs and mq-definitions.
 
 ## Commands
 
