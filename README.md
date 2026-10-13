@@ -2,7 +2,7 @@
 
 A MacroQuest Lua inventory seller built under the MagFarm engineering rules. It lists the items you carry, remembers the ones you check in a per character INI, and sells only what you confirm, one verified stack at a time.
 
-Version 1.0.0. Live selling is off by default; see TESTING.md before enabling it.
+Version 1.1.0. Live selling is off by default; see TESTING.md before enabling it.
 
 ## Install
 
@@ -46,7 +46,8 @@ A launch argument can lower the mode for one session (`preview` or `selecttest`)
 * Bags, protected packs, zero value items and unreadable items are excluded. NO DROP and Lore exclusions are optional settings.
 * Readiness must pass before selling: in game, cursor empty, no macro running, merchant open and loaded, selections file writable, protected bag list valid.
 * If inventory changed after you clicked Sell, the list is rebuilt and you confirm again.
-* Before each stack: exact slot reread, same item and quantity required. Selection verified by `Merchant.SelectedItem`. Sale counted only when the stack is verified gone.
+* Before each stack: exact slot reread, same item and quantity required. Selection verified by `Merchant.SelectedItem`, then the merchant's price quote must arrive before selling. "Not interested" fails that item immediately. Sale counted only when the stack is verified gone.
+* Items the open merchant gives no price for are excluded for that merchant (setting `EXCLUDE_UNPRICED_AT_MERCHANT`).
 * Every wait is bounded. Failures stop the run by default; a hard cap applies in skip mode. Cursor, merchant change or close, and a macro starting always stop the run.
 * The report shows measured coin change next to the estimate. Coin change includes anything else that changed your coin during the run.
 

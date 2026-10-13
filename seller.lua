@@ -15,7 +15,10 @@ Documented interfaces used (see INTERFACES.md)
   /itemnotify in packN <slot#> leftmouseup   select an item inside a bag
   /itemnotify <slot#> leftmouseup             select a loose item in a pack slot
   /sellitem <qty>                     sell <qty> of the selected item
-  mq.delay(ms, condition)             bounded wait that ends early on condition
+  mq.delay(ms), mq.gettime()          bounded polling waits
+  mq.event / mq.unevent / mq.doevents / mq.flushevents
+                                      merchant quote and refusal chat lines
+                                      (Lua Events and Binds documentation)
 
 Safety contract
   * Nothing here runs from an ImGui callback. The UI only sets request flags;
@@ -28,7 +31,9 @@ Safety contract
   * Before every action the exact slot is re-read; it must still contain the
     same item ID and stack size.
   * Selection must be confirmed by Merchant.SelectedItem (ID and ItemSlot /
-    ItemSlot2) before /sellitem is issued.
+    ItemSlot2), AND the merchant's price quote for that selection must arrive,
+    before /sellitem is issued. A refusal ("I am not interested in buying
+    that.") fails the item immediately instead of waiting for a timeout.
   * A sale counts only when the stack is verified gone (or reduced) from that
     slot. A clicked button is never reported as a sale.
   * Every wait is bounded. Failures follow config.ON_FAILURE, capped by
@@ -83,6 +88,7 @@ function seller.new(cfg, log)
         running = false,
         progress = { index = 0, total = 0, current = '' },
         lastReport = nil,
+        events = { quotes = 0, refusals = 0, lastQuote = nil },
     }, seller)
 end
 
@@ -137,7 +143,7 @@ end
 --- @return table proposal
 function seller:buildProposal(scan, checked)
     local items, entries = {}, {}
-    local totalQty, estCopper, estKnown = 0, 0, true
+    local totalQty, estCopper, unpriced = 0, 0, 0
     for _, row in ipairs(scan.rows) do
         if checked[row.id] and row.eligible then
             local unit = row.sellPrice
@@ -147,7 +153,7 @@ function seller:buildProposal(scan, checked)
                 unitEst = (type(unit) == 'number' and unit > 0) and unit or nil,
                 skippedReasons = row.reasonText,
             }
-            if item.unitEst then estCopper = estCopper + item.unitEst * item.qty else estKnown = false end
+            if item.unitEst then estCopper = estCopper + item.unitEst * item.qty else unpriced = unpriced + 1 end
             items[#items + 1] = item
             totalQty = totalQty + item.qty
             for _, e in ipairs(row.entries) do
@@ -167,7 +173,8 @@ function seller:buildProposal(scan, checked)
     return {
         items = items, entries = entries,
         totalQty = totalQty, totalStacks = #entries,
-        estCopper = (#items > 0 and estKnown) and estCopper or nil,
+        estCopper = (#items > unpriced) and estCopper or nil,   -- sum of priced items only
+        unpricedTypes = unpriced,
         fingerprint = table.concat(fp, '|'),
         mode = self.mode,
         createdAt = os.date('%Y-%m-%d %H:%M:%S'),
@@ -179,9 +186,52 @@ end
 -- ---------------------------------------------------------------------------
 
 --- Wait up to ms for cond() or a stop request. Returns true if cond() became true.
+--- Polls in short documented mq.delay steps and calls mq.doevents() each step
+--- so merchant chat events (quote/refusal) are processed while waiting.
 function seller:waitFor(ms, cond)
-    mq.delay(ms, function() return self.stopRequested or cond() end)
+    local start = mq.gettime()
+    while true do
+        mq.doevents()
+        if cond() then return true end
+        if self.stopRequested then return false end
+        if mq.gettime() - start >= ms then break end
+        mq.delay(50)
+    end
+    mq.doevents()
     return cond() and true or false
+end
+
+-- ---------------------------------------------------------------------------
+-- Merchant chat events (documented mq.event / mq.doevents / mq.flushevents)
+-- ---------------------------------------------------------------------------
+-- Seen in the client on 2026-10-13:
+--   Merchant Wyn'las told you, 'I'll give you 1 gold 9 silver per Nodding Blue Lily'
+--   Merchant Wyn'las told you, 'I am not interested in buying that.'
+-- Counters only increase; the worker compares before/after snapshots, so an
+-- old line can never satisfy a new wait.
+
+local EVENT_QUOTE, EVENT_REFUSAL = 'mfv_quote', 'mfv_refusal'
+
+function seller:registerEvents()
+    self.events = { quotes = 0, refusals = 0, lastQuote = nil }
+    mq.event(EVENT_QUOTE, '#*#' .. self.cfg.QUOTE_PHRASE .. '#*#', function(line)
+        self.events.quotes = self.events.quotes + 1
+        self.events.lastQuote = line
+    end)
+    mq.event(EVENT_REFUSAL, '#*#' .. self.cfg.REFUSAL_PHRASE .. '#*#', function(line)
+        self.events.refusals = self.events.refusals + 1
+    end)
+end
+
+function seller:unregisterEvents()
+    mq.unevent(EVENT_QUOTE)
+    mq.unevent(EVENT_REFUSAL)
+end
+
+--- Discard queued (old) merchant lines before a new selection.
+function seller:flushMerchantEvents()
+    mq.flushevents(EVENT_QUOTE)
+    mq.flushevents(EVENT_REFUSAL)
 end
 
 --- Checks that always stop the run. Returns nil or a reason string.
@@ -227,7 +277,7 @@ function seller:run(proposal)
     local report = {
         mode = self.mode, startedAt = os.date('%Y-%m-%d %H:%M:%S'),
         planned = proposal.totalQty, plannedStacks = proposal.totalStacks,
-        estCopper = proposal.estCopper,
+        estCopper = proposal.estCopper, unpricedTypes = proposal.unpricedTypes or 0,
         byId = {}, order = {}, failures = {}, stopReason = 'Completed',
         stacksDone = 0, soldQty = 0, selectedOk = 0,
     }
@@ -283,6 +333,8 @@ function seller:run(proposal)
             end
 
             -- 2. Select and verify the selection.
+            self:flushMerchantEvents()
+            local q0, r0 = self.events.quotes, self.events.refusals
             issueSelect(e)
             local selected = self:waitFor(cfg.SELECT_TIMEOUT_MS, function() return selectionMatches(e) end)
             local cur = probe.cursorId()
@@ -299,6 +351,32 @@ function seller:run(proposal)
             report.selectedOk = report.selectedOk + 1
             log.debug('item.selected', { id = e.id, name = e.name, pack = e.pack, slot = e.sub and (e.sub + 1) or 'loose' })
 
+            -- 2b. Wait for the merchant's price quote (or refusal) for THIS selection.
+            --     v1.0.0 sold before the quote arrived and the merchant answered
+            --     "I am not interested in buying that."
+            do
+                local answered = self:waitFor(cfg.QUOTE_TIMEOUT_MS, function()
+                    return self.events.quotes > q0 or self.events.refusals > r0
+                end)
+                if self.events.refusals > r0 then
+                    if fail(e, 'Merchant is not interested in buying this item') == 'stop' then break end
+                    goto continue
+                end
+                if not answered then
+                    if self.stopRequested then report.stopReason = 'Stopped by operator'; break end
+                    if fail(e, 'No price quote from merchant after selection') == 'stop' then break end
+                    goto continue
+                end
+                local line = self.events.lastQuote or ''
+                local named = line:lower():find(e.name:lower(), 1, true) ~= nil
+                log.debug('item.quoted', { id = e.id, name = e.name, quote = line, names_item = named })
+                if not named then
+                    log.warn('item.quote_unnamed', { id = e.id, name = e.name, quote = line,
+                        note = 'quote did not include the item name; selection was verified by Merchant.SelectedItem' })
+                end
+                report.byId[e.id].quoted = (report.byId[e.id].quoted or 0) + 1
+            end
+
             if self.mode == 'select_test' then
                 report.stacksDone = report.stacksDone + 1
                 goto pace
@@ -310,12 +388,19 @@ function seller:run(proposal)
             if self.stopRequested then report.stopReason = 'Stopped by operator'; break end
 
             -- 4. Sell and verify the stack left (or reduced in) that exact slot.
-            mq.cmdf('/sellitem %d', e.qty)
+            if cfg.POST_QUOTE_DELAY_MS > 0 then mq.delay(cfg.POST_QUOTE_DELAY_MS) end
             do
+                local r1 = self.events.refusals
+                mq.cmdf('/sellitem %d', e.qty)
                 local gone = self:waitFor(cfg.SELL_TIMEOUT_MS, function()
+                    if self.events.refusals > r1 then return true end      -- refusal ends the wait early
                     local x = inventory.readLocation(e.topSlot, e.sub)
                     return x == nil or x.id ~= e.id or (type(x.stack) == 'number' and x.stack < e.qty)
                 end)
+                if self.events.refusals > r1 then
+                    local chk = inventory.readLocation(e.topSlot, e.sub)
+                    if chk and chk.id == e.id and chk.stack == e.qty then gone = false end
+                end
                 local after = inventory.readLocation(e.topSlot, e.sub)
                 local remaining = (after and after.id == e.id) and (after.stack or e.qty) or 0
                 local sold = e.qty - remaining
@@ -331,7 +416,9 @@ function seller:run(proposal)
                     goto continue
                 else
                     if self.stopRequested then report.stopReason = 'Stopped by operator (sale unconfirmed)'; break end
-                    if fail(e, 'Sale not confirmed within timeout (merchant may refuse this item)') == 'stop' then break end
+                    local why = self.events.refusals > r1 and 'Merchant refused the sale (not interested)'
+                        or 'Sale not confirmed within timeout'
+                    if fail(e, why) == 'stop' then break end
                     goto continue
                 end
             end

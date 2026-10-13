@@ -41,7 +41,7 @@ local config = {}
 config.SCRIPT_NAME = 'magfarm_vendor'
 
 -- Version string shown in the window title and written to every log line set.
-config.VERSION = '1.0.0'
+config.VERSION = '1.1.0'
 
 -- Slash command registered with mq.bind for emergency control:
 --   /mfvendor stop   -> stop selling before the next item
@@ -100,6 +100,17 @@ config.SELECT_TIMEOUT_MS = 2000
 -- Range 500-15000.
 config.SELL_TIMEOUT_MS = 4000
 
+-- Maximum wait, after the selection is verified, for the merchant's price
+-- quote chat line ("<merchant> told you, 'I'll give you ...'"). The client
+-- must receive this quote before a sale is accepted; selling earlier produced
+-- "I am not interested in buying that." in the first live test (v1.0.0).
+-- The wait ends as soon as the quote or a refusal arrives. Range 500-10000.
+config.QUOTE_TIMEOUT_MS = 3000
+
+-- Extra pause after the quote arrives and before /sellitem, so the client has
+-- applied the quote. Range 0-2000.
+config.POST_QUOTE_DELAY_MS = 150
+
 -- Pause after each verified sale/selection before the next one. Gives the
 -- client and server time to settle and keeps the pace human-like. Range 0-5000.
 config.BETWEEN_ITEMS_DELAY_MS = 350
@@ -139,6 +150,21 @@ config.EXCLUDE_NO_DROP = false
 
 -- true  : Lore items are excluded. false: listed with an "L" flag.
 config.EXCLUDE_LORE = false
+
+-- true  : while a merchant is open, items for which that merchant reports no
+--         sell price (Item.SellPrice is 0 or unavailable) are excluded as
+--         "Merchant offers no price". In the first live test the only item
+--         showing "Unavailable" (Natural Spices) is the kind the merchant
+--         refuses. Your remembered check is kept; the item is just not sold
+--         to THIS merchant.
+-- false : list them anyway (a refusal is then detected and handled at sale time).
+config.EXCLUDE_UNPRICED_AT_MERCHANT = true
+
+-- Chat text the merchant sends. These are the exact phrases seen in the
+-- EverQuest client on 2026-10-13; they are matched with documented mq.event
+-- matcher wildcards (#*#). Change only if your client shows different text.
+config.QUOTE_PHRASE   = "told you, 'I'll give you "
+config.REFUSAL_PHRASE = "told you, 'I am not interested in buying that.'"
 
 -- ---------------------------------------------------------------------------
 -- Persistence (INI)
@@ -227,6 +253,13 @@ local RULES = {
     EXCLUDE_ZERO_VALUE = function(v) if type(v) ~= 'boolean' then return 'must be true or false' end end,
     EXCLUDE_NO_DROP    = function(v) if type(v) ~= 'boolean' then return 'must be true or false' end end,
     EXCLUDE_LORE       = function(v) if type(v) ~= 'boolean' then return 'must be true or false' end end,
+    EXCLUDE_UNPRICED_AT_MERCHANT = function(v) if type(v) ~= 'boolean' then return 'must be true or false' end end,
+    QUOTE_PHRASE = function(v)
+        if type(v) ~= 'string' or #v < 8 or v:find('#', 1, true) then return 'must be text of 8+ characters without #' end
+    end,
+    REFUSAL_PHRASE = function(v)
+        if type(v) ~= 'string' or #v < 8 or v:find('#', 1, true) then return 'must be text of 8+ characters without #' end
+    end,
     DEFAULT_PROTECTED_BAGS = function(v)
         if type(v) ~= 'table' then return 'must be a list such as { 1, 2 }' end
         for i, n in ipairs(v) do
@@ -245,6 +278,8 @@ local RANGES = {
     SELL_TIMEOUT_MS        = { 500, 15000 },
     BETWEEN_ITEMS_DELAY_MS = { 0, 5000 },
     COIN_SETTLE_DELAY_MS   = { 0, 5000 },
+    QUOTE_TIMEOUT_MS       = { 500, 10000 },
+    POST_QUOTE_DELAY_MS    = { 0, 2000 },
     FIRST_PACK_SLOT        = { 23, 34 },
     LAST_PACK_SLOT         = { 23, 34 },
     INI_SCHEMA             = { 1, 1 },

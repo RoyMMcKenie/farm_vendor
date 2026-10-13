@@ -282,9 +282,10 @@ local function drawProgress(app)
             detail = ('Sold %d of %d planned item(s); %d failure(s). Coin change: %s (estimate was %s)')
                 :format(r.soldQty, r.planned, #r.failures,
                     r.coinDelta and coin(r.coinDelta) or 'unavailable',
-                    r.estCopper and coin(r.estCopper) or 'unavailable')
+                    r.estCopper and (coin(r.estCopper) .. ((r.unpricedTypes or 0) > 0
+                        and (' for priced items; %d unpriced'):format(r.unpricedTypes) or '')) or 'unavailable')
         elseif r.mode == 'select_test' then
-            detail = ('Selection verified for %d of %d stack(s); %d failure(s). Nothing was sold.')
+            detail = ('Selection and merchant quote verified for %d of %d stack(s); %d failure(s). Nothing was sold.')
                 :format(r.selectedOk, r.plannedStacks, #r.failures)
         else
             detail = ('Preview listed %d stack(s) / %d item(s). No game commands were issued.')
@@ -338,7 +339,11 @@ local function drawConfirm(app)
             if app.confirmNotice then colored(COLOR.warn, app.confirmNotice) else colored(COLOR.dim, ' ') end
             ImGui.TextUnformatted(('You are about to process %d item type(s), %d stack(s), %d individual item(s).')
                 :format(#p.items, p.totalStacks, p.totalQty))
-            ImGui.TextUnformatted('Estimated proceeds: ' .. (p.estCopper and coin(p.estCopper) or 'Unavailable'))
+            local est = p.estCopper and coin(p.estCopper) or 'Unavailable'
+            if p.estCopper and (p.unpricedTypes or 0) > 0 then
+                est = est .. ('  (excludes %d unpriced item type(s))'):format(p.unpricedTypes)
+            end
+            ImGui.TextUnformatted('Estimated proceeds: ' .. est)
             ImGui.TextUnformatted('All eligible copies of each listed item will be processed.')
             ImGui.TextUnformatted('Protected bags and excluded stacks are never touched.')
             ImGui.Separator()

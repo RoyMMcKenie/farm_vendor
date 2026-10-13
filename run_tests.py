@@ -80,7 +80,7 @@ H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_
 # 2 merchant refuses -> stop policy
 def c2(lua, d, err):
     return (err is None and G(lua,"HARNESS.outHas('Stopped on failure')") and G(lua,"HARNESS.stack(24,nil)")==3
-            and G(lua,"HARNESS.countCmd('/sellitem')")>=1), 'refusal handled'
+            and G(lua,"HARNESS.countCmd('/sellitem')")==0), 'refusal handled'
 scenario('live: merchant refusal stops run (ON_FAILURE=stop), later items untouched', r'''
 H.std(); HARNESS.world.refuse[13073]=true
 H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
@@ -91,7 +91,7 @@ H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_
 # 3 skip_item policy continues with other IDs
 def c3(lua, d, err):
     return (err is None and G(lua,"HARNESS.stack(24,nil)")==0 and G(lua,"HARNESS.stack(23,0)")==20
-            and G(lua,"HARNESS.countCmd('/sellitem')")==2), f"sellcmds={G(lua,'HARNESS.countCmd(\"/sellitem\")')}"
+            and G(lua,"HARNESS.countCmd('/sellitem')")==1), f"sellcmds={G(lua,'HARNESS.countCmd(\"/sellitem\")')}"
 scenario('live: skip_item skips remaining stacks of failed ID and continues', r'''
 H.std(); HARNESS.world.refuse[13073]=true
 H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
@@ -236,6 +236,61 @@ H.on(function() return HARNESS.frame>2 end, function() HARNESS.checks[5021]=true
 H.on(function() return HARNESS.frame>4 end, function() H.press('Save Selections') end)
 H.on(function() return HARNESS.frame>6 end, function() H.press('Cancel##mfv_cancel') end)
 ''', c17, mode='live', ini="[Meta]\nSchema=1\n[SelectedItems]\n13073=1\nabc=1\n10037=2\ngarbage line\n")
+
+
+# 18 regression for v1.0.0 failure: slow quote must be waited for
+def c18(lua, d, err):
+    return (err is None and G(lua,"HARNESS.premature or 0")==0 and G(lua,"HARNESS.stack(24,nil)")==0
+            and G(lua,"HARNESS.stack(23,0)")==0), f"premature={G(lua,'HARNESS.premature or 0')}"
+scenario('regression v1.0.0: waits for a 2 s merchant quote before /sellitem', r"""
+H.std(); HARNESS.world.quoteDelay = 2000
+H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##mfv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_cancel') end)
+""", c18, mode='live', ini=INI_OK)
+
+# 19 refusal at selection fails fast without /sellitem
+def c19(lua, d, err):
+    return (err is None and G(lua,"HARNESS.outHas('not interested in buying this item')") and G(lua,"HARNESS.countCmd('/sellitem')")==0), 'refusal'
+scenario('live: "not interested" at selection fails the item immediately, no /sellitem', r"""
+H.std(); HARNESS.world.refuse[13073]=true
+H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##mfv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_cancel') end)
+""", c19, mode='live', ini=INI_OK)
+
+# 20 no quote -> fail closed
+def c20(lua, d, err):
+    return (err is None and G(lua,"HARNESS.outHas('No price quote')") and G(lua,"HARNESS.countCmd('/sellitem')")==0), 'noquote'
+scenario('live: missing merchant quote blocks the sale (fail closed)', r"""
+H.std(); HARNESS.world.noQuote = true
+H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##mfv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_cancel') end)
+""", c20, mode='live', ini=INI_OK)
+
+# 21 unpriced item excluded at merchant, remembered check kept, others sell
+def c21(lua, d, err):
+    ini = open(os.path.join(d,'magfarm_vendor_test%20server_TestMag.ini')).read()
+    return (err is None and G(lua,"HARNESS.stack(26,nil)")==1 and G(lua,"HARNESS.stack(24,nil)")==0
+            and '6060=1' in ini and G(lua,"HARNESS.outHas('reason=Completed')")), ini
+scenario('exclusion: item with no merchant price is skipped, check remembered, run completes', r"""
+H.std(); HARNESS.world.packs[26] = { item = H.mkItem(6060,'Natural Spices',1,40,{sellPrice=0}) }
+H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##mfv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_cancel') end)
+""", c21, mode='live', ini=INI_OK.replace('10037=1\n','10037=1\n6060=1\n'))
+
+
+# 22 refusal at sell time (after a quote) is detected quickly and reported
+def c22(lua, d, err):
+    return (err is None and G(lua,"HARNESS.outHas('Merchant refused the sale')") and G(lua,"HARNESS.stack(23,0)")==20), 'sell-time refusal'
+scenario('live: refusal after the quote is reported as a refusal, stack untouched', r"""
+H.std(); HARNESS.world.refuseAtSell = { [13073] = true }
+H.on(function() return HARNESS.frame>2 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##mfv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##mfv_cancel') end)
+""", c22, mode='live', ini=INI_OK)
 
 p = sum(1 for r in results if r[1])
 for n, ok, m in results:

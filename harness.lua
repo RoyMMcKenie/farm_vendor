@@ -11,10 +11,17 @@ H.world = {
   noSelect = {},      -- [id]=true selection never registers
   cursorOnSelect = {},-- [id]=true item jumps to cursor
   packs = {},         -- [slot] = {bag=n, items={[sub]=item}} or {item=item}
+  quoteDelay = 300,   -- ms until the merchant quote line arrives after a selection
+  noQuote = false,    -- merchant never sends a quote
+  quoteAt = nil,      -- time the current selection's quote is delivered
 }
+H.lines = {}          -- pending chat lines {at=ms, text=}
+H.events = {}         -- name -> {phrase=, cb=, queue={}}
+local function say(text, delay) H.lines[#H.lines+1] = { at = H.now + (delay or 0), text = text } end
+H.say = say
 local function mkItem(id, name, stack, value, opts)
   opts = opts or {}
-  return { id=id, name=name, stack=stack, value=value, nodrop=opts.nodrop or false, lore=opts.lore or false, container=opts.container or 0 }
+  return { id=id, name=name, stack=stack, value=value, nodrop=opts.nodrop or false, lore=opts.lore or false, container=opts.container or 0, sellPrice=opts.sellPrice }
 end
 H.mkItem = mkItem
 
@@ -25,7 +32,7 @@ local function itemProxy(rec, slot, sub)
   p.Name = g(function(r) return r.name end)
   p.Stack = g(function(r) return r.stack end)
   p.Value = g(function(r) return r.value end)
-  p.SellPrice = g(function(r) return H.world.merchantOpen and math.floor(r.value*0.9) or nil end)
+  p.SellPrice = g(function(r) if not H.world.merchantOpen then return nil end; if r.sellPrice ~= nil then return r.sellPrice end; return math.floor(r.value*0.9) end)
   p.NoDrop = g(function(r) return r.nodrop end)
   p.Lore = g(function(r) return r.lore end)
   p.Container = g(function(r) return r.container end)
@@ -77,6 +84,16 @@ local mq = { TLO = TLO, configDir = HARNESS_DIR, imgui = {} }
 function mq.cmd(c) H.cmds[#H.cmds+1]=c; H.exec(c) end
 function mq.cmdf(f, ...) mq.cmd(string.format(f, ...)) end
 function mq.bind(c, cb) H.bind = cb end
+function mq.gettime() return H.now end
+function mq.event(name, matcher, cb)
+  local phrase = matcher:gsub('#%*#', '')
+  H.events[name] = { phrase = phrase, cb = cb, queue = {} }
+end
+function mq.unevent(name) H.events[name] = nil end
+function mq.flushevents(name) if name then if H.events[name] then H.events[name].queue = {} end else for _, e in pairs(H.events) do e.queue = {} end end end
+function mq.doevents()
+  for _, e in pairs(H.events) do local q = e.queue; e.queue = {}; for _, l in ipairs(q) do e.cb(l) end end
+end
 function mq.unbind() H.unbound = true end
 function mq.imgui.init(n, cb) H.render = cb end
 function mq.imgui.destroy() H.destroyed = true end
@@ -99,13 +116,26 @@ function H.exec(c)
   if slot then
     local it = locate(slot, s2)
     if it and H.world.cursorOnSelect[it.id] then H.world.cursor = it.id; return end
-    if it and not H.world.noSelect[it.id] then H.world.selected = {slot=slot, sub=s2} end
+    if it and not H.world.noSelect[it.id] then
+      H.world.selected = {slot=slot, sub=s2}
+      if H.world.refuse[it.id] then
+        H.world.quoteAt = nil
+        say("Merchant Wyn'las told you, 'I am not interested in buying that.'", 200)
+      elseif not H.world.noQuote then
+        H.world.quoteAt = H.now + H.world.quoteDelay
+        say(("Merchant Wyn'las told you, 'I'll give you 1 gold 9 silver per %s'"):format(it.name), H.world.quoteDelay)
+      end
+    end
     return
   end
   local q = c:match('^/sellitem (%d+)$')
   if q then
     q = tonumber(q); local s = H.world.selected; if not s then return end
-    local it = locate(s.slot, s.sub); if not it or H.world.refuse[it.id] then return end
+    local it = locate(s.slot, s.sub)
+    if not it or H.world.refuse[it.id] or (H.world.refuseAtSell and H.world.refuseAtSell[it.id]) or not H.world.quoteAt or H.now < H.world.quoteAt then
+      H.premature = (H.premature or 0) + 1
+      say("Merchant Wyn'las told you, 'I am not interested in buying that.'", 100); return
+    end
     local n = math.min(q, it.stack, H.world.partialCap or 1e9)
     it.stack = it.stack - n; H.world.coin = H.world.coin + n*math.floor(it.value*0.9)
     if it.stack <= 0 then
@@ -150,6 +180,13 @@ _G.ImGuiTableColumnFlags = { WidthFixed=16, WidthStretch=8 }
 H.pressed = {}
 function H.tickFrame()
   H.frame = H.frame + 1
+  local keep = {}
+  for _, l in ipairs(H.lines) do
+    if l.at <= H.now then
+      for _, e in pairs(H.events) do if l.text:find(e.phrase, 1, true) then e.queue[#e.queue+1] = l.text end end
+    else keep[#keep+1] = l end
+  end
+  H.lines = keep
   H.windows = {}; H.texts = {}
   if H.render then H.render() end
   local st = H.steps[1]

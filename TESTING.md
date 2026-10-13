@@ -4,7 +4,7 @@ MagFarm rule: documented, then tested, then enabled. Live selling stays off (`co
 
 ## Offline logic tests (already run)
 
-`tests/run_tests.py` runs the real package under LuaJIT with a mock MacroQuest client (`tests/harness.lua`). Result at release: 17 of 17 passed.
+`tests/run_tests.py` runs the real package under LuaJIT with a mock MacroQuest client (`tests/harness.lua`). Result for v1.1.0: 22 of 22 passed.
 
 | # | Scenario |
 |---|---|
@@ -25,6 +25,21 @@ MagFarm rule: documented, then tested, then enabled. Live selling stays off (`co
 | 15 | Partial stack sale reported as a failure, not a success |
 | 16 | Running macro blocks selling |
 | 17 | Explicit Save: atomic write, `.bak` created, malformed lines ignored with warnings |
+| 18 | Regression for the v1.0.0 live failure: a 2 second merchant quote is waited for; no early `/sellitem` |
+| 19 | "Not interested" at selection fails the item at once, no `/sellitem` |
+| 20 | No quote arrives: sale blocked (fail closed) |
+| 21 | Item with no merchant price excluded while the merchant is open; remembered check kept; run completes |
+| 22 | Refusal after the quote reported as a refusal; stack untouched |
+
+The mock merchant now behaves like the client did on 2026-10-13: the quote arrives after a delay, and a sale sent before the quote is answered "I am not interested in buying that."
+
+## Client results so far
+
+| Date | Version | Result |
+|---|---|---|
+| 2026-10-13 | 1.0.0 | Stage 1 preview passed (1.1, 1.2, 1.4, 1.6, 1.7) on Merchant Wyn\`las: 43 stacks, 168 items, no commands |
+| 2026-10-13 | 1.0.0 | Live: Peridot selected and sold, coin matched estimate within 1c. Nodding Blue Lily selected, then refused ("not interested") because the sale was sent before the quote; run stopped safely |
+| 2026-10-13 | manual | `/sellitem 1` then `/sellitem 41` on the selected lily sold all 42 after the quote |
 
 To rerun: `pip install lupa`, then `python tests/run_tests.py` from the release folder that contains both `magfarm_vendor` and `tests`. These prove program logic only, not client behavior.
 
@@ -48,7 +63,7 @@ Setup: run `/lua run magfarm_vendor selecttest` (or set `SELL_MODE = 'select_tes
 
 | Check | Expected |
 |---|---|
-| 2.1 Bag item, bags open | Merchant window highlights the item; `item.selected` in the log file; nothing on cursor |
+| 2.1 Bag item, bags open | Merchant window highlights the item; merchant says "I'll give you ..."; `item.selected` and `item.quoted` in the log file; nothing on cursor |
 | 2.2 Bag item, bags closed | Same as 2.1. If it fails, note it: open bags before selling is then a required step |
 | 2.3 Loose item in a pack slot | Same as 2.1 |
 | 2.4 Item in pack9 or higher (if you have the slots) | Same as 2.1 |

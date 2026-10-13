@@ -308,6 +308,7 @@ local function onBind(...)
     end
 end
 mq.bind(config.BIND_COMMAND, onBind)
+app.seller:registerEvents()
 
 -- ---------------------------------------------------------------------------
 -- 7. UI registration and main loop
@@ -316,6 +317,7 @@ mq.imgui.init(config.SCRIPT_NAME, function() ui.render(app) end)
 
 rescan('startup')
 updateReadiness()
+local lastMerchantOpen = app.scan and app.scan.merchantOpen
 log.info('startup.ready', { mode = mode, file = app.store.path })
 
 while app.running do
@@ -327,6 +329,14 @@ while app.running do
             return
         end
         if r.rescan then rescan('operator') end
+        -- Prices and "Merchant offers no price" exclusions depend on the open
+        -- merchant, so re-scan whenever the merchant window opens or closes.
+        local mo = app.seller.probe.merchantOpen() == true
+        if mo ~= lastMerchantOpen and not r.rescan then rescan(mo and 'merchant_opened' or 'merchant_closed') end
+        lastMerchantOpen = mo
+        -- Discard merchant chat lines that arrive while idle; each selection
+        -- also flushes before it starts, so only fresh lines are ever counted.
+        app.seller:flushMerchantEvents()
         if r.save then save('operator') end
         if r.cancelConfirm then
             app.showConfirm, app.proposal, app.confirmNotice = false, nil, nil
@@ -348,5 +358,6 @@ end
 -- ---------------------------------------------------------------------------
 if app.dirty then log.info('shutdown.discarded_unsaved', { note = 'Cancel exits without saving' }) end
 mq.unbind(config.BIND_COMMAND)
+app.seller:unregisterEvents()
 mq.imgui.destroy(config.SCRIPT_NAME)
 log.info('shutdown.complete', {})

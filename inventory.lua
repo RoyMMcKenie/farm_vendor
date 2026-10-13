@@ -63,7 +63,7 @@ local function readEntry(item, topSlot, subIndex)
 end
 
 --- Decide whether an entry can be offered for sale; returns nil or a reason.
-local function exclusionReason(e, cfg, protected)
+local function exclusionReason(e, cfg, protected, merchantOpen)
     if protected[e.pack] then return 'Protected bag' end
     if type(e.name) ~= 'string' or e.name == '' then return 'Unknown name' end
     if type(e.container) == 'number' and e.container > 0 then return 'Container' end
@@ -73,6 +73,10 @@ local function exclusionReason(e, cfg, protected)
     if e.noDrop == nil then return 'Unknown NO DROP flag' end
     if cfg.EXCLUDE_NO_DROP and e.noDrop then return 'NO DROP excluded' end
     if cfg.EXCLUDE_LORE and e.lore then return 'Lore excluded' end
+    if merchantOpen and cfg.EXCLUDE_UNPRICED_AT_MERCHANT
+        and not (type(e.sellPrice) == 'number' and e.sellPrice > 0) then
+        return 'Merchant offers no price'
+    end
     -- Location must be confirmed by the documented ItemSlot/ItemSlot2 members.
     if e.itemSlot ~= e.topSlot then return 'Location unconfirmed' end
     if e.sub ~= nil and e.itemSlot2 ~= e.sub then return 'Location unconfirmed' end
@@ -84,6 +88,7 @@ end
 --- @param protectedList number[] pack numbers to protect
 --- @return table result {entries=, rows=, rowsById=, protectedCount=, scannedAt=}
 function inventory.scan(cfg, protectedList)
+    local merchantOpen = read(function() return mq.TLO.Merchant.Open() end) == true
     local protected = {}
     for _, p in ipairs(protectedList or {}) do protected[p] = true end
 
@@ -112,7 +117,7 @@ function inventory.scan(cfg, protectedList)
     -- Classify and aggregate by item ID.
     local rows, rowsById = {}, {}
     for _, e in ipairs(entries) do
-        e.excluded = exclusionReason(e, cfg, protected)
+        e.excluded = exclusionReason(e, cfg, protected, merchantOpen)
         if e.excluded == 'Protected bag' then protectedCount = protectedCount + 1 end
         if e.excluded ~= 'Protected bag' then            -- protected items are hidden entirely
             local row = rowsById[e.id]
@@ -153,7 +158,7 @@ function inventory.scan(cfg, protectedList)
 
     return {
         entries = entries, rows = rows, rowsById = rowsById,
-        protectedCount = protectedCount, scannedAt = os.time(),
+        protectedCount = protectedCount, scannedAt = os.time(), merchantOpen = merchantOpen,
     }
 end
 
