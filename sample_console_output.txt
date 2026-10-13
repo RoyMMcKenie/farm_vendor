@@ -1,0 +1,15 @@
+[FarmVendor] INFO startup.begin character=TestMag mode=live server="test server" version=1.2.0
+[FarmVendor] INFO store.loaded path=/tmp/tmp3crbk3nl/Farm_Vendor_test%20server_TestMag.ini selected=2 status=loaded
+[FarmVendor] INFO inventory.scanned eligible=3 protected_hidden=2 reason=startup rows=4
+[FarmVendor] INFO startup.ready file=/tmp/tmp3crbk3nl/Farm_Vendor_test%20server_TestMag.ini mode=live
+[FarmVendor] INFO inventory.scanned eligible=3 protected_hidden=2 reason=prepare rows=4
+[FarmVendor] INFO sale.proposed mode=live qty=28 stacks=3 types=2
+[FarmVendor] INFO inventory.scanned eligible=3 protected_hidden=2 reason=confirm rows=4
+[FarmVendor] INFO store.saved count=1 path=/tmp/tmp3crbk3nl/Farm_Vendor_test%20server_TestMag.ini reason=confirm
+[FarmVendor] INFO run.start merchant="Test Merchant" mode=live policy=stop qty=28 stacks=3
+[FarmVendor] INFO sale.verified id=13073 name="Bone Chips" pack=1 qty=20 slot=1
+[FarmVendor] INFO sale.verified id=13073 name="Bone Chips" pack=1 qty=5 slot=2
+[FarmVendor] INFO sale.verified id=10037 name=Diamond pack=2 qty=3 slot=loose
+[FarmVendor] INFO run.end coin_delta="5p 6g 2s 5c" failures=0 mode=live reason=Completed sold=28 stacks_done=3
+[FarmVendor] INFO inventory.scanned eligible=1 protected_hidden=2 reason=after_run rows=2
+[FarmVendor] INFO shutdown.complete
