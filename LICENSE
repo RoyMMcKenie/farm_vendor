@@ -1,0 +1,39 @@
+MIT License
+
+Copyright (c) 2026 Roy M. McKenzie
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-------------------------------------------------------------------------------
+THIRD PARTY CREDITS AND NOTICE
+
+Farm Vendor is a new Lua program. Its workflow (a remembered sell list built
+from your inventory, then select and sell each stack) comes from these
+RedGuides macros. No code was copied from either one. Their authors keep all
+rights in their original works; the MIT license above covers Farm Vendor's
+own code only and grants nothing in those works.
+
+  Sellitem.mac                                 Cannonballdex
+    https://www.redguides.com/community/resources/authors/cannonballdex.233812/
+  AutoVendor 3.6 (AutoVendor.mac)              Ionis
+    https://www.redguides.com/community/resources/autovendor.1930/
+    https://www.redguides.com/community/threads/autovendor.75143/
+
+What came from which work is listed in README.md, "Credits", and on the
+CREDITS line of every Lua file.

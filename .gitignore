@@ -1,0 +1,36 @@
+# =============================================================================
+#   FILE    : Farm_Vendor/.gitignore
+#   PACKAGE : Farm Vendor Lua (MacroQuest / EverQuest)
+#   VERSION : 1.3.0
+#   WHAT    : Files git should never upload.
+#   WHY     : Keeps the repository to source and documentation only.
+#   WHERE   : Root of the repository (the Farm_Vendor folder).
+#   HOW     : One pattern per line; # starts a comment.
+#   WHEN    : Read by git on every commit.
+# =============================================================================
+
+# Python cache created when dev/doc_audit.py or dev/run_tests.py runs.
+__pycache__/
+*.pyc
+
+# Packaged zips are built from the source; the source is what gets versioned.
+*.zip
+
+# Per character selections and logs (Farm_Vendor_<server>_<name>.ini/.log),
+# in case one is ever copied here by mistake. The real ones live in
+# <MacroQuest>/config/.
+Farm_Vendor_*.ini
+Farm_Vendor_*.ini.bak
+Farm_Vendor_*.log
+Farm_Vendor_*.log.1
+
+# Editor and operating system clutter.
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# =============================================================================
+#   END OF FILE : Farm_Vendor/.gitignore
+# =============================================================================

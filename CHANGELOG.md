@@ -1,4 +1,35 @@
-# Changelog
+<!--
+  FILE    : Farm_Vendor/CHANGELOG.md
+  PACKAGE : Farm Vendor Lua (MacroQuest / EverQuest)
+  WHAT    : Version history, newest first. dev/doc_audit.py reads the first
+            "## x.y.z" heading and checks every Lua file's VERSION against it.
+  WHY     : So every change can be traced to a version and a reason.
+  WHERE   : Package root.
+  WHEN    : Add an entry with every release, before tagging it.
+-->
+# Farm Vendor changelog
+
+## 1.3.0 (2026-11-17)
+
+Consolidation and documentation release for publishing on GitHub. No selling logic changed: the code is token for token the 1.2.2 code, in fewer files.
+
+- Seven Lua files became five. Modules that always load together and sit at the same layer are now sections of one file:
+
+  | New file | Sections (old files) | Layer |
+  |---|---|---|
+  | `config.lua` | config | Parameters and validation (unchanged) |
+  | `core.lua` | log, store | Foundation: logging and the selections file |
+  | `engine.lua` | inventory, seller | Decision and action: scan, readiness, guarded worker |
+  | `ui.lua` | ui | Window (unchanged apart from where it loads the inventory) |
+  | `init.lua` | init | Entry point (MacroQuest needs it) |
+
+- Each section keeps its own doc block, its own CHANGES history (corrected against the real diffs between versions) and an END OF SECTION footer. Its locals stay private inside a `do ... end` block.
+- Every file has a documentation header and footer, and every function a WHAT, WHY, WHERE, HOW and WHEN block. Every code line carries a comment. `dev/doc_audit.py` checks all of this.
+- Credits: every Lua header has a CREDITS line naming Sellitem.mac by Cannonballdex and AutoVendor 3.6 by Ionis where their workflow is used. LICENSE carries the same notice and states that no code was copied.
+- AUDIT.md replaces INTERFACES.md: a line by line audit of every TLO member, Lua function, ImGui call, enum, command and chat event against mq-definitions `67f2248`, the MacroQuest docs `d6b9550` and the MacroQuest source `3eb3297`. Nothing invented. Two findings, both documentation only: the /itemnotify page lists pack1 to pack8 while the source accepts every available pack, and with a bag closed MacroQuest picks the item up onto the cursor, which Farm Vendor already stops on.
+- Tests moved to `dev/`. `run_tests.py` now works from any folder name. Offline tests: 31 of 31.
+- New ARCHITECTURE.md, LICENSE (MIT) and .gitignore. The README drops the old MagFarm wording.
+- Upgrading from 1.2.x: delete `log.lua`, `store.lua`, `inventory.lua` and `seller.lua`. The INI is unchanged.
 
 ## 1.2.2 (2026-10-13)
 
@@ -46,3 +77,5 @@ Live test: Nodding Blue Lily was refused because the sale was sent before the me
 ## 1.0.0 (2026-10-13)
 
 First release as MagFarm Vendor: a Lua rewrite of the sellitem.mac and AutoVendor.mac workflow under the MagFarm rules. Checklist UI, per character INI, confirmation window, guarded worker with verified selection and sale, three modes, `/mfvendor` commands, structured logging, measured coin change. Offline tests: 17 of 17.
+
+<!-- END OF FILE: Farm_Vendor/CHANGELOG.md -->

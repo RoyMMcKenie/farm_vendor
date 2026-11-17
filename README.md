@@ -1,24 +1,37 @@
-# Farm Vendor
+<!--
+  FILE    : Farm_Vendor/README.md
+  PACKAGE : Farm Vendor Lua (MacroQuest / EverQuest)
+  VERSION : 1.3.0
+  WHAT    : What Farm Vendor does, how to install and run it, the modes,
+            commands and safeguards, the package layout and the credits.
+  WHY     : First thing to read before running or editing the package.
+  WHERE   : Package root. ARCHITECTURE.md covers the code, AUDIT.md every
+            external interface, TESTING.md the tests, CHANGELOG.md versions.
+  WHEN    : Read before first use; update when behaviour or commands change.
+-->
+# Farm Vendor 1.3.0
 
-A MacroQuest Lua inventory seller. It lists what you carry, remembers the items you check in a per character INI, and sells only what you confirm, one verified stack at a time. Built under the MagFarm engineering rules: documented interfaces only, fail closed, staged testing.
+A MacroQuest Lua inventory seller. It lists what you carry, remembers the items you check in a per character INI, and sells only what you confirm, one verified stack at a time. It uses documented interfaces only, fails closed, and is tested in stages.
 
-Version 1.2.2. Validated live in the client on 2026-10-13; ships in live mode.
+Version 1.3.0 is the consolidated, fully documented release of 1.2.2. Selling logic is unchanged from 1.2.2, which was validated live in the client on 2026-10-13. It ships in live mode.
 
 ## Install and run
 
-Copy the `Farm_Vendor` folder into your MacroQuest `lua` folder (`lua/Farm_Vendor/init.lua`), then:
+Copy this folder into your MacroQuest `lua` folder as `lua/Farm_Vendor` (so the entry point is `lua/Farm_Vendor/init.lua`), then:
 
 ```text
 /lua run Farm_Vendor
 ```
 
+If you clone the repository, the folder is named `farm_vendor`. Windows ignores case, so that works as is; on any other system rename it to `Farm_Vendor`. The `dev/` folder is only for offline testing and can be left out of the game install.
+
 Only MQ2Lua is required (it provides Lua and ImGui).
 
-Upgrading from `magfarm_vendor`: the first run copies your saved checks from the old INI (log line `startup.selections_migrated`). The old file is never changed. Once your checks appear, you can delete `lua/magfarm_vendor`.
+Upgrading from `magfarm_vendor`: the first run copies your saved checks from the old INI (log line `startup.selections_migrated`). The old file is never changed. Once your checks appear, you can delete `lua/magfarm_vendor`. Upgrading from 1.2.x: delete the old `log.lua`, `store.lua`, `inventory.lua` and `seller.lua` files, which are now sections inside `core.lua` and `engine.lua`. Your INI is unchanged.
 
 ## Use
 
-1. Open a merchant yourself and empty your cursor.
+1. Open a merchant yourself, open your bags, and empty your cursor.
 2. Check the items to sell. Saved checks are pre ticked; new items start unchecked.
 3. Sell All Checked Items opens a confirmation window with the exact items, quantities and estimate.
 4. Confirm Sale saves your checks and sells each stack. Cancel there returns with nothing saved or sold.
@@ -41,7 +54,7 @@ A launch argument (`preview` or `selecttest`) can lower the mode for one session
 
 | Command | Effect |
 |---|---|
-| `/fvendor stop` | Stop before the next item |
+| `/fvendor stop` | Pause control: stop before the next item |
 | `/fvendor quit` | Stop if selling, then exit |
 | `/fvendor show` | Show the window again |
 
@@ -52,10 +65,11 @@ A launch argument (`preview` or `selecttest`) can lower the mode for one session
 * Selling requires: in game, empty cursor, no macro running, merchant open and loaded, writable selections file, valid protected bag list.
 * Inventory changed after Sell: the list is rebuilt and you confirm again.
 * Per stack: slot reread, selection verified by `Merchant.SelectedItem`, merchant quote for that item required, sale counted only when the stack is gone. One retry if the merchant refuses right after a valid quote.
+* If a selection puts the item on the cursor (MacroQuest does this when the bag is closed), the run stops and the item is left for you.
 * All waits are bounded. Failures stop the run by default. Cursor items, merchant change or close, and a macro starting always stop it.
 * The report shows measured coin change beside the estimate.
 
-## Files
+## Files written
 
 | Location | Contents |
 |---|---|
@@ -70,14 +84,15 @@ All settings are in `config.lua`, each commented with purpose, range and default
 |---|---|
 | `init.lua` | Startup, request handling, main loop, shutdown |
 | `config.lua` | Parameters and validation |
-| `log.lua` | Console, file and Activity Log events |
-| `store.lua` | INI parsing and atomic saves |
-| `inventory.lua` | Read only inventory and coin scan |
-| `seller.lua` | Readiness, proposal, guarded selling worker |
+| `core.lua` | `log` section (console, file and Activity Log events) and `store` section (INI parsing and atomic saves) |
+| `engine.lua` | `inventory` section (read only inventory and coin scan) and `seller` section (readiness, proposal, guarded selling worker) |
 | `ui.lua` | ImGui windows; sets request flags only |
-| `INTERFACES.md` | Every external interface and its documentation |
+| `dev/` | Offline tests (`run_tests.py`, `harness.lua`), documentation checker (`doc_audit.py`), sample output |
+| `ARCHITECTURE.md` | How the code is organised and the documentation standard |
+| `AUDIT.md` | Every external interface and the source that defines it |
 | `TESTING.md` | Offline tests and client stages |
 | `CHANGELOG.md` | Version history |
+| `LICENSE` | MIT license and third party credits |
 
 ## Credits
 
@@ -89,3 +104,7 @@ Farm Vendor is a new Lua program, but its workflow comes from two community macr
 No code was copied. Farm Vendor reuses their ideas (a remembered sell list, then select and sell each stack) and replaces the commands with documented MacroQuest interfaces.
 
 Also thanks to the [MacroQuest](https://docs.macroquest.org/) developers, the [mq-definitions](https://github.com/macroquest/mq-definitions) project used to verify every Lua and ImGui call, and [RedGuides](https://www.redguides.com/docs/) for its command reference.
+
+Author: Roy M. McKenzie.
+
+<!-- END OF FILE: Farm_Vendor/README.md -->

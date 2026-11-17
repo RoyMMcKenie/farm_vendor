@@ -1,35 +1,56 @@
---[[
-Farm_Vendor/config.lua
-=========================
+--[[==========================================================================
+  FILE        : Farm_Vendor/config.lua
+  PACKAGE     : Farm Vendor  (MacroQuest Lua / EverQuest)
+  VERSION     : 1.3.0
+  CHANGES     : 1.3.0  VERSION set to 1.3.0. No setting changed. Header,
+                       footer and function documentation brought to the
+                       project standard. Kept as its own file on purpose:
+                       it is the one file players are expected to edit.
+                1.2.2  Version number only.
+                1.2.1  Version number only.
+                1.2.0  SCRIPT_NAME Farm_Vendor, LEGACY_SCRIPT_NAME added,
+                       BIND_COMMAND /fvendor, SELL_MODE ships as live.
+                1.1.1  POST_QUOTE_DELAY_MS 150 to 500 (range up to 3000),
+                       SELL_REFUSAL_RETRIES and RETRY_DELAY_MS added.
+                1.1.0  QUOTE_TIMEOUT_MS, POST_QUOTE_DELAY_MS, QUOTE_PHRASE,
+                       REFUSAL_PHRASE, EXCLUDE_UNPRICED_AT_MERCHANT added.
+                1.0.0  First release.
 
-Purpose
--------
-Every tunable parameter for Farm Vendor lives in this file, with a comment
-explaining what it does, its allowed range, and why the default was chosen.
-At startup, init.lua calls config.validate(); if ANY value is out of range or
-the wrong type, the script refuses to start (fail closed) and prints exactly
-which parameter is wrong.
+  CREDITS     : Original to Farm Vendor.
 
-Editing rules
--------------
-* Change values only on the right-hand side of the `=` sign.
-* Keep the quotes on text values ('preview', 'stop', etc.).
-* Times are in milliseconds (1000 ms = 1 second).
-* After editing, restart the script:  /lua stop Farm_Vendor
-                                      /lua run Farm_Vendor
+  WHAT  : Every tunable parameter for Farm Vendor, each with a comment that
+          gives its purpose, allowed range and why the default was chosen,
+          plus config.validate(), which checks them all.
 
-MagFarm engineering rules applied
----------------------------------
-1. Documentation first: no command, TLO, member, or ImGui call is used unless it
-   appears in MacroQuest or RedGuides documentation (see INTERFACES.md).
-2. Documented -> tested -> enabled: live selling is OFF by default. You move
-   through SELL_MODE 'preview' -> 'select_test' -> 'live' as each stage passes
-   in your own client (see TESTING.md).
-3. Fail closed: unknown readings, invalid settings, or failed checks block the
-   action. Nothing is guessed or silently substituted.
-]]
+  WHY   : One place to change behaviour without touching program logic. At
+          startup init.lua calls config.validate(); if any value is out of
+          range or the wrong type the script refuses to start (fail closed)
+          and prints exactly which parameter is wrong.
 
-local config = {}
+  WHERE : <MacroQuest>/lua/Farm_Vendor/config.lua
+          Required by init.lua, which passes it to the engine and the UI as
+          app.cfg.
+
+  HOW   : Editing rules
+            * Change values only on the right hand side of the = sign.
+            * Keep the quotes on text values ('preview', 'stop', etc.).
+            * Times are in milliseconds (1000 ms = 1 second).
+            * After editing, restart:  /lua stop Farm_Vendor
+                                       /lua run Farm_Vendor
+          Engineering rules applied
+            1. Documentation first: no command, TLO member or ImGui call is
+               used unless MacroQuest or RedGuides documents it (AUDIT.md).
+            2. Documented, then tested, then enabled: move through SELL_MODE
+               preview, select_test, live as each stage passes in your own
+               client (TESTING.md).
+            3. Fail closed: unknown readings, invalid settings or failed
+               checks block the action. Nothing is guessed.
+
+  WHEN  : Loaded once at /lua run Farm_Vendor and validated before anything
+          else happens.
+==========================================================================]]--
+
+local config = {}   -- every parameter below is a field of this table
 
 -- ---------------------------------------------------------------------------
 -- Identity
@@ -47,7 +68,7 @@ config.SCRIPT_NAME = 'Farm_Vendor'
 config.LEGACY_SCRIPT_NAME = 'magfarm_vendor'
 
 -- Version string shown in the window title and written to every log line set.
-config.VERSION = '1.2.2'
+config.VERSION = '1.3.0'
 
 -- Slash command registered with mq.bind for emergency control:
 --   /fvendor stop   -> stop selling before the next item
@@ -240,113 +261,193 @@ config.ACTIVITY_LOG_HEIGHT = 140
 -- Validation (do not edit below unless you are changing the program)
 -- ===========================================================================
 
+-- Allowed log level names (used by the two LOG_LEVEL rules).
 local LEVELS = { DEBUG = true, INFO = true, WARN = true, ERROR = true }
 
+--[[------------------------------------------------------------------------
+  isInt(v)  (private)
+
+  WHAT  : True when v is a number with no fractional part.
+  WHY   : Every timing, size and slot setting must be a whole number.
+  WHERE : RULES (DEFAULT_PROTECTED_BAGS) and config.validate below.
+  HOW   : Type check, then compare with math.floor.
+  WHEN  : During validation at startup.
+--------------------------------------------------------------------------]]
+-- Whole number test used by the range checks.
 local function isInt(v) return type(v) == 'number' and v == math.floor(v) end
 
+--[[------------------------------------------------------------------------
+  RULES  (private table of small validator functions)
+
+  WHAT  : One function per non numeric parameter. Each takes the current
+          value and returns an error text when it is invalid, or nothing.
+  WHY   : Text, true/false and list settings each need their own test; a
+          table keyed by parameter name keeps each test next to its name.
+  WHERE : config.validate below.
+  HOW   : Called as RULES[name](config[name]).
+  WHEN  : During validation at startup.
+--------------------------------------------------------------------------]]
 --- Rules table: each entry validates one parameter and returns an error string
 --- when invalid, or nil when valid.
 local RULES = {
+    -- Must match the folder name, so letters, digits and _ only.
     SCRIPT_NAME = function(v)
         if type(v) ~= 'string' or not v:match('^[%w_]+$') then
             return 'must be letters, digits or underscore'
         end
     end,
+    -- Empty switches the one time copy off; otherwise a safe file name part.
     LEGACY_SCRIPT_NAME = function(v)
         if type(v) ~= 'string' or (v ~= '' and not v:match('^[%w_]+$')) then
             return "must be '' or letters, digits or underscore"
         end
     end,
+    -- Shown in the title and logs; any non empty text.
     VERSION = function(v) if type(v) ~= 'string' or v == '' then return 'must be a non-empty string' end end,
+    -- A slash, a letter, then letters or digits (what mq.bind accepts).
     BIND_COMMAND = function(v)
         if type(v) ~= 'string' or not v:match('^/[%a][%w]*$') then
             return "must look like '/name' (letters/digits only)"
         end
     end,
+    -- Exactly one of the three documented modes.
     SELL_MODE = function(v)
         if v ~= 'preview' and v ~= 'select_test' and v ~= 'live' then
             return "must be 'preview', 'select_test' or 'live'"
         end
     end,
+    -- Exactly one of the two failure policies.
     ON_FAILURE = function(v)
         if v ~= 'stop' and v ~= 'skip_item' then return "must be 'stop' or 'skip_item'" end
     end,
+    -- Log thresholds must be a known level name.
     CONSOLE_LOG_LEVEL = function(v) if not LEVELS[v] then return 'must be DEBUG, INFO, WARN or ERROR' end end,
     FILE_LOG_LEVEL    = function(v) if not LEVELS[v] then return 'must be DEBUG, INFO, WARN or ERROR' end end,
+    -- Switches must be real booleans, not 0/1 or text.
     FILE_LOG_ENABLED   = function(v) if type(v) ~= 'boolean' then return 'must be true or false' end end,
     EXCLUDE_ZERO_VALUE = function(v) if type(v) ~= 'boolean' then return 'must be true or false' end end,
     EXCLUDE_NO_DROP    = function(v) if type(v) ~= 'boolean' then return 'must be true or false' end end,
+    -- (booleans continued)
     EXCLUDE_LORE       = function(v) if type(v) ~= 'boolean' then return 'must be true or false' end end,
     EXCLUDE_UNPRICED_AT_MERCHANT = function(v) if type(v) ~= 'boolean' then return 'must be true or false' end end,
+    -- Chat phrases: long enough to be specific, and no # because #*# is
+    -- the mq.event wildcard and a # inside would change the pattern.
     QUOTE_PHRASE = function(v)
         if type(v) ~= 'string' or #v < 8 or v:find('#', 1, true) then return 'must be text of 8+ characters without #' end
     end,
+    -- Same rule for the refusal phrase.
     REFUSAL_PHRASE = function(v)
         if type(v) ~= 'string' or #v < 8 or v:find('#', 1, true) then return 'must be text of 8+ characters without #' end
     end,
+    -- A list of pack numbers 1 to 12.
     DEFAULT_PROTECTED_BAGS = function(v)
         if type(v) ~= 'table' then return 'must be a list such as { 1, 2 }' end
         for i, n in ipairs(v) do
-            if not isInt(n) or n < 1 or n > 12 then
-                return ('entry %d must be a whole number from 1 to 12'):format(i)
+            if not isInt(n) or n < 1 or n > 12 then   -- each entry must be a pack number
+                return ('entry %d must be a whole number from 1 to 12'):format(i)   -- name the bad entry
             end
         end
     end,
 }
 
+-- RANGES: every whole number setting with its allowed minimum and maximum.
+-- The ranges match the comments next to each setting above.
 --- Integer range rules: name -> {min, max}
 local RANGES = {
     MAX_FAILURES_PER_RUN   = { 1, 50 },
     LOOP_DELAY_MS          = { 50, 1000 },
-    SELECT_TIMEOUT_MS      = { 250, 10000 },
+    SELECT_TIMEOUT_MS      = { 250, 10000 },   -- selection wait
+    -- timing (continued)
     SELL_TIMEOUT_MS        = { 500, 15000 },
     BETWEEN_ITEMS_DELAY_MS = { 0, 5000 },
     COIN_SETTLE_DELAY_MS   = { 0, 5000 },
+    -- quote handling
     QUOTE_TIMEOUT_MS       = { 500, 10000 },
     POST_QUOTE_DELAY_MS    = { 0, 3000 },
     SELL_REFUSAL_RETRIES   = { 0, 2 },
+    -- retry and scan range
     RETRY_DELAY_MS         = { 250, 5000 },
     FIRST_PACK_SLOT        = { 23, 34 },
     LAST_PACK_SLOT         = { 23, 34 },
+    -- persistence
     INI_SCHEMA             = { 1, 1 },
     INI_MAX_BYTES          = { 1024, 4194304 },
     MAX_ITEM_NAME_LENGTH   = { 16, 256 },
+    -- logging
     LOG_MAX_BYTES          = { 65536, 10485760 },
     UI_LOG_LINES           = { 20, 1000 },
     WINDOW_WIDTH           = { 400, 3000 },
+    -- window
     WINDOW_HEIGHT          = { 300, 2000 },
     SEARCH_MAX_LENGTH      = { 8, 128 },
     ACTIVITY_LOG_HEIGHT    = { 60, 600 },
 }
 
+--[[------------------------------------------------------------------------
+  config.validate()
+
+  WHAT  : Checks every parameter. Returns ok and a sorted list of messages
+          such as "config.SELL_TIMEOUT_MS must be a whole number from 500 to
+          15000 (current: -5)".
+  WHY   : A typo in config.lua must stop the script with a clear message,
+          never run with a value nobody tested.
+  WHERE : init.lua, first thing after the files load.
+  HOW   : Runs every RULES function, then every RANGES check, then checks
+          FIRST_PACK_SLOT is not after LAST_PACK_SLOT. Sorts the messages so
+          the output is the same every time.
+  WHEN  : Once at startup.
+--------------------------------------------------------------------------]]
 --- Validate every parameter.
 --- @return boolean ok
 --- @return string[] errors  human-readable messages, empty when ok
 function config.validate()
-    local errors = {}
+    local errors = {}                                           -- messages
+    -- Text, boolean and list rules.
     for name, rule in pairs(RULES) do
         local msg = rule(config[name])
         if msg then errors[#errors + 1] = ('config.%s %s (current: %s)'):format(name, msg, tostring(config[name])) end
     end
+    -- Whole number ranges.
     for name, range in pairs(RANGES) do
         local v = config[name]
         if not isInt(v) or v < range[1] or v > range[2] then
-            errors[#errors + 1] = ('config.%s must be a whole number from %d to %d (current: %s)')
-                :format(name, range[1], range[2], tostring(v))
+            errors[#errors + 1] = ('config.%s must be a whole number from %d to %d (current: %s)')   -- explain the allowed range
+                :format(name, range[1], range[2], tostring(v))   -- fill in min, max and current value
         end
     end
+    -- The scan range must run forwards.
     if isInt(config.FIRST_PACK_SLOT) and isInt(config.LAST_PACK_SLOT)
         and config.FIRST_PACK_SLOT > config.LAST_PACK_SLOT then
         errors[#errors + 1] = 'config.FIRST_PACK_SLOT must not be greater than config.LAST_PACK_SLOT'
     end
-    table.sort(errors)
+    table.sort(errors)                                          -- stable output
     return #errors == 0, errors
 end
 
+-- Launch arguments may only lower the mode. MODE_RANK orders the modes;
+-- MODE_ARGS lists the words /lua run Farm_Vendor <word> accepts.
 --- Ordering used to decide whether a launch argument is a downgrade.
 config.MODE_RANK = { preview = 1, select_test = 2, live = 3 }
 
 --- Map accepted launch arguments to modes. 'live' is intentionally absent.
 config.MODE_ARGS = { preview = 'preview', selecttest = 'select_test', select_test = 'select_test' }
 
+-- Hand the settings table to init.lua.
 return config
+
+--[[==========================================================================
+  END OF FILE : Farm_Vendor/config.lua
+
+  PUBLIC  every UPPER_CASE setting above, validate(), MODE_RANK, MODE_ARGS
+
+  DEPENDENCIES : none.
+
+  HOW TO EDIT SAFELY
+    - Players: change values only, then restart the script. If it refuses
+      to start, the console names the setting to fix.
+    - Developers: a new whole number setting needs a RANGES entry; any
+      other new setting needs a RULES entry. Note its range and default in
+      the comment above it, and add it to CHANGELOG.md.
+    - After any change that touches selling, set SELL_MODE back to preview
+      or select_test and repeat the TESTING.md stages before live.
+==========================================================================]]--

@@ -1,12 +1,23 @@
-# Farm Vendor: Testing
+<!--
+  FILE    : Farm_Vendor/TESTING.md
+  PACKAGE : Farm Vendor Lua (MacroQuest / EverQuest)
+  VERSION : 1.3.0
+  WHAT    : Offline tests, the client results so far, and the staged client
+            checks to repeat after any change to selling code.
+  WHY     : Program logic is proven offline; client behaviour only in game.
+  WHERE   : Package root; the tests themselves are in dev/.
+  WHEN    : Run the offline tests before every commit; repeat the client
+            stages after any change to engine.lua/seller.
+-->
+# Farm Vendor testing
 
-MagFarm rule: documented, then tested, then enabled. Passed checks stay passed unless the related code changes. After any change to selling code, return to `preview` or `select_test` and repeat Stages 2 and 3 before going live again.
+Rule: documented, then tested, then enabled. Passed checks stay passed unless the related code changes. After any change to selling code, return to `preview` or `select_test` and repeat Stages 2 and 3 before going live again.
 
 ## Offline tests
 
-`python tests/run_tests.py` (needs `pip install lupa`) runs the real package under LuaJIT against a mock MacroQuest client (`tests/harness.lua`). The mock merchant quotes after a delay and refuses a sale sent before the quote, as the client did. The harness also fails any frame that leaves an ImGui begin/end or push/pop pair open. These tests prove program logic, not client behavior.
+`python3 dev/run_tests.py` (needs `pip install lupa`) runs the real package under LuaJIT against a mock MacroQuest client (`dev/harness.lua`). It works from any folder name. `python3 dev/doc_audit.py` checks the documentation standard (headers, footers, function blocks, line comments, versions). `dev/sample_console_output.txt` shows a passing run. The mock merchant quotes after a delay and refuses a sale sent before the quote, as the client did. The harness also fails any frame that leaves an ImGui begin/end or push/pop pair open. These tests prove program logic, not client behavior.
 
-Result for v1.2.2: 31 of 31 passed.
+Result for v1.3.0: 31 of 31 passed (same scenarios as 1.2.2; scenario 28 now reads the version from config.lua). doc_audit: all five Lua files pass.
 
 | Area | Scenarios |
 |---|---|
@@ -48,8 +59,9 @@ Stage 2, selection test (`/lua run Farm_Vendor selecttest`):
 | Check | Expected |
 |---|---|
 | 2.1 Bag item, loose item | Highlighted in the merchant window, merchant quotes, `item.quoted` logged, cursor empty |
-| 2.2 Bags closed; pack9 or above | Same as 2.1 (not yet observed) |
-| 2.3 Close merchant; `/fvendor stop` | Stops at once; stops before the next item |
+| 2.2 Bags closed | MacroQuest picks the item up onto the cursor instead of clicking the slot (MQ2Windows.cpp, see AUDIT.md). Expected: run stops with "Item went to the cursor"; put the item back yourself. Not yet observed |
+| 2.3 Item in pack9 or above | Same as 2.1. Supported by the MacroQuest source; not yet observed |
+| 2.4 Close merchant; `/fvendor stop` | Stops at once; stops before the next item |
 
 If "Merchant did not report the expected selection" appears, save the `item.failed` log line for a reviewed fix.
 
@@ -61,11 +73,15 @@ Stage 3, live:
 | 3.2 Item the merchant will not buy | Fails at once ("not interested"); run stops by default |
 | 3.3 Item onto the cursor mid run | Stops; the script never moves it |
 
-## v1.2.x check (one run)
+## v1.3.0 check (one run)
+
+1.3.0 changes no selling logic, so passed checks stay passed. One run confirms the new files load.
 
 | Check | Expected |
 |---|---|
-| R.1 First `/lua run Farm_Vendor` | Title "Farm Vendor v1.2.2"; `startup.selections_migrated` logged on the first run only |
-| R.2 Checks | Same remembered items ticked as before |
-| R.3 `/fvendor show` | Window reappears |
-| R.4 Normal live run | Same results as 1.1.1; no `ui.render_error` lines |
+| C.1 Remove the old 1.2.x files, then `/lua run Farm_Vendor` | Title "Farm Vendor v1.3.0"; `startup.ready` logged; no load errors |
+| C.2 Checks | Same remembered items ticked as before |
+| C.3 `/fvendor show`, `/fvendor stop` | Window reappears; stop works while selling |
+| C.4 Normal live run | Same results as 1.2.2; no `ui.render_error` lines |
+
+<!-- END OF FILE: Farm_Vendor/TESTING.md -->
