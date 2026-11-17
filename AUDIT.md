@@ -1,7 +1,7 @@
 <!--
   FILE    : Farm_Vendor/AUDIT.md
   PACKAGE : Farm Vendor Lua (MacroQuest / EverQuest)
-  VERSION : 1.3.0
+  VERSION : 1.4.0
   WHAT    : Line by line source audit of Farm Vendor 1.3.0, and the interface
             ledger that replaces the 1.2.x INTERFACES.md. Every game data call
             (TLO), MacroQuest Lua function, ImGui call, enum, slash command and
@@ -15,6 +15,8 @@
             is added or changed.
 -->
 # Farm Vendor source audit (1.3.0)
+
+1.4.0 addendum: Select All and Never Sell add no new interface. They use `ImGui.Checkbox`, `ImGui.Button` and `ImGui.TableSetupColumn`, already listed in section 3, with the same argument forms. No TLO member, command or event was added. The audit below was performed for 1.3.0 and still holds.
 
 Result: nothing invented. Every interface the code touches is defined by MacroQuest, the MacroQuest Lua and ImGui definitions, or the MacroQuest source. One documentation discrepancy and one corrected test expectation were found (see "Findings"); no code changed.
 

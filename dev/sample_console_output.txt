@@ -1,4 +1,4 @@
-[FarmVendor] INFO startup.begin character=TestMag mode=live server="test server" version=1.3.0
+[FarmVendor] INFO startup.begin character=TestMag mode=live server="test server" version=1.4.0
 [FarmVendor] INFO store.loaded path=<configDir>/Farm_Vendor_test%20server_TestMag.ini selected=2 status=loaded
 [FarmVendor] INFO inventory.scanned eligible=3 protected_hidden=2 reason=startup rows=4
 [FarmVendor] INFO startup.ready file=<configDir>/Farm_Vendor_test%20server_TestMag.ini mode=live

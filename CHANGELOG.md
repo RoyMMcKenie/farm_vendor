@@ -9,6 +9,21 @@
 -->
 # Farm Vendor changelog
 
+## 1.4.0 (2026-11-17)
+
+Select All and a persistent Never Sell checkbox, as requested by Roy.
+
+- Never Sell column: a checkbox on every row. A Never Sell item cannot be checked or sold. Ticking it removes any existing check on that item.
+- Never Sell is saved the moment you tick or untick it, so it survives Cancel and restarts. That save writes only the Never Sell list; unsaved Sell checks still wait for Save Selections or Confirm Sale.
+- Only a manual untick removes Never Sell. Select All and Clear Checks never change it.
+- Select All button: checks every item the filters currently show that has a sellable stack and is not Never Sell.
+- Second guard: the sale list (`buildProposal`) leaves Never Sell items out even if one is somehow checked, for example in a hand edited INI. An ID listed in both `[SelectedItems]` and `[NeverSell]` loads as Never Sell only.
+- INI: new `[NeverSell]` section; the schema stays 1. Version 1.3.0 and older keep the section word for word, so going back a version loses nothing (they just do not enforce it).
+- If the file is read only, Never Sell still applies for the session and `neversell.save_failed` is logged.
+- No new MacroQuest or ImGui interface: the column and button use `Checkbox`, `Button` and `TableSetupColumn`, already audited. No selling, selection or quote code changed.
+- Offline tests: 37 of 37 (new 32 to 37). Each new test was checked by breaking the guard it covers and confirming it fails.
+- `dev/doc_audit.py` looks for the header in the first 90 lines (was 60).
+
 ## 1.3.0 (2026-11-17)
 
 Consolidation and documentation release for publishing on GitHub. No selling logic changed: the code is token for token the 1.2.2 code, in fewer files.

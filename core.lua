@@ -1,8 +1,12 @@
 --[[==========================================================================
   FILE        : Farm_Vendor/core.lua
   PACKAGE     : Farm Vendor  (MacroQuest Lua / EverQuest)
-  VERSION     : 1.3.0
-  CHANGES     : 1.3.0  Consolidation. log.lua and store.lua were merged into
+  VERSION     : 1.4.0
+  CHANGES     : 1.4.0  store section: new [NeverSell] section (schema 1
+                       unchanged), store:setNeverSell, Never Sell wins over
+                       a check, and saves verify the Never Sell set too.
+                       log section unchanged.
+                1.3.0  Consolidation. log.lua and store.lua were merged into
                        this one file as two sections. Code is unchanged (a
                        token comparison against 1.2.2 proves it); each section
                        keeps its private locals inside a do ... end block.
@@ -334,7 +338,11 @@ end
 
 --[[==========================================================================
   SECTION     : store   (was Farm_Vendor/store.lua up to 1.2.2)
-  HISTORY     : 1.2.0  File names and Tool= value renamed to Farm_Vendor.
+  HISTORY     : 1.4.0  [NeverSell] section: items that may never be checked
+                       or sold, kept until you untick them yourself.
+                       store:setNeverSell saves them on their own.
+                1.3.0  Moved into core.lua; no code change.
+                1.2.0  File names and Tool= value renamed to Farm_Vendor.
                 1.0.0  First release.
 
   WHAT  : Per server, per character INI storage for the items you checked.
@@ -350,15 +358,24 @@ end
             ProtectedBags=1,2          ; optional, pack numbers 1-12
             [SelectedItems]
             13073=1                    ; item ID = 1 (checked)
+            [NeverSell]
+            10037=1                    ; item ID = 1 (never sell)
             [ItemNames]
             13073=Bone Chips           ; readability only, never matched
+            10037=Diamond
+
+          [NeverSell] was added in 1.4.0 without changing the schema
+          number: 1.3.0 and older treat it as an unknown section and keep
+          it word for word, so going back a version loses nothing (they
+          just do not enforce it). An ID in both [SelectedItems] and
+          [NeverSell] is loaded as Never Sell only.
 
   WHY   : Remembered checks save you ticking the same trash every visit.
           Losing or corrupting them silently would be worse than not having
           them, so every rule below fails closed.
 
   WHERE : init.lua creates one store with store.new and calls load, save,
-          setSelections and protectedBags. ui.lua reads status fields only.
+          setSelections, setNeverSell and protectedBags. ui.lua reads status fields only.
 
   HOW   : Rules carried from MagFarm:
             * The file is data, never executed (no loadstring or dofile).
@@ -371,14 +388,17 @@ end
             * Status is explicit: new, loaded, loaded_with_warnings,
               readonly, saved, failed. A failed save is never a success.
             * Remembered checks never trigger a sale; they only pre tick.
+            * Never Sell always wins: an ID in [NeverSell] is never loaded
+              as checked and never saved as checked.
 
   WHEN  : load at startup; save when you press Save Selections or Confirm
-          Sale.
+          Sale; setNeverSell then save the moment a Never Sell box is
+          ticked or unticked.
 ==========================================================================]]--
 --#BODY store
 do
     -- Section names this version understands; anything else is preserved.
-    local KNOWN_SECTIONS = { Meta = true, Settings = true, SelectedItems = true, ItemNames = true }
+    local KNOWN_SECTIONS = { Meta = true, Settings = true, SelectedItems = true, NeverSell = true, ItemNames = true }
     local MAX_ITEM_ID = 2147483647   -- largest 32 bit signed ID; above is corrupt
     local MAX_LINES = 50000          -- stop reading a runaway file here
 
@@ -444,7 +464,8 @@ do
       store.parse(text, opts)
 
       WHAT  : Parses INI text into a record {schema, tool, protectedBagsText,
-              selected, names, extra} and a list of warnings. Never raises.
+              selected, neverSell, names, extra} and a list of warnings.
+              Never raises.
       WHY   : The file may be hand edited, truncated or from a future
               version. Bad lines are skipped with a warning instead of
               crashing or guessing.
@@ -452,8 +473,10 @@ do
       HOW   : Line by line: comments and blanks skipped (kept inside unknown
               sections), [Section] headers switch context, key=value lines
               are applied per section. Item IDs must be 1..MAX_ITEM_ID;
-              SelectedItems values must be 0 or 1. Unknown sections are kept
-              verbatim in rec.extra. Reading stops after MAX_LINES.
+              SelectedItems and NeverSell values must be 0 or 1. Unknown
+              sections are kept verbatim in rec.extra. Reading stops after
+              MAX_LINES. Last, any ID that is Never Sell is removed from
+              selected (Never Sell wins, with a warning).
       WHEN  : Startup, and during every save.
     ----------------------------------------------------------------------]]
     --- Parse INI text into a structured record. Never raises.
@@ -466,6 +489,7 @@ do
             schema = nil, tool = nil,
             protectedBagsText = nil,
             selected = {},     -- [id:number] = true
+            neverSell = {},    -- [id:number] = true (1.4.0)
             names = {},        -- [id:number] = string
             extra = {},        -- preserved unknown sections: array of {name=, lines={}}
         }
@@ -518,8 +542,8 @@ do
                         elseif section == 'Settings' then
                             -- Kept as text; parsed later so errors block selling.
                             if key == 'ProtectedBags' then rec.protectedBagsText = value end
-                        elseif section == 'SelectedItems' or section == 'ItemNames' then
-                            -- Both sections are keyed by a positive item ID.
+                        elseif section == 'SelectedItems' or section == 'NeverSell' or section == 'ItemNames' then
+                            -- All three sections are keyed by a positive item ID.
                             local id = key:match('^%d+$') and tonumber(key)
                             if not id or id < 1 or id > MAX_ITEM_ID then
                                 warnings[#warnings + 1] = ('line %d: ignored invalid item ID %q'):format(lineNo, key)
@@ -528,6 +552,12 @@ do
                                 if value == '1' then rec.selected[id] = true
                                 elseif value ~= '0' then
                                     warnings[#warnings + 1] = ('line %d: item %d value must be 0 or 1; left unchecked'):format(lineNo, id)
+                                end
+                            elseif section == 'NeverSell' then   -- [NeverSell] line (1.4.0)
+                                -- Same 0 or 1 rule; anything else warns and is not protected.
+                                if value == '1' then rec.neverSell[id] = true
+                                elseif value ~= '0' then
+                                    warnings[#warnings + 1] = ('line %d: Never Sell item %d value must be 0 or 1; ignored'):format(lineNo, id)
                                 end
                             else
                                 -- Display name only: strip control characters, cap.
@@ -542,6 +572,13 @@ do
                 end
             end
         end
+        -- Never Sell wins: an ID in both lists is loaded as Never Sell only.
+        for id in pairs(rec.neverSell) do
+            if rec.selected[id] then   -- hand edited file with both set
+                rec.selected[id] = nil   -- drop the check, keep the protection
+                warnings[#warnings + 1] = ('item %d is in both SelectedItems and NeverSell; kept as Never Sell'):format(id)
+            end
+        end
         return rec, warnings   -- parsed record plus ignored line notes
     end
 
@@ -553,9 +590,10 @@ do
               files predictable and diff friendly.
       WHERE : store:save.
       HOW   : Writes two comment lines, [Meta], [Settings], the checked IDs
-              in ascending order under [SelectedItems], the same IDs with
-              cleaned names under [ItemNames], then any preserved unknown
-              sections exactly as read.
+              in ascending order under [SelectedItems], the Never Sell IDs
+              under [NeverSell], every one of those IDs with its cleaned
+              name under [ItemNames], then any preserved unknown sections
+              exactly as read.
       WHEN  : Every save.
     ----------------------------------------------------------------------]]
     --- Serialize a record to INI text (schema 1).
@@ -582,8 +620,19 @@ do
         table.sort(ids)                                     -- ascending order
         add('[SelectedItems]')
         for _, id in ipairs(ids) do add(('%d=1'):format(id)) end
+        local never = {}                                    -- Never Sell IDs (1.4.0)
+        for id in pairs(rec.neverSell or {}) do never[#never + 1] = id end
+        table.sort(never)                                   -- ascending order
+        add('[NeverSell]')
+        for _, id in ipairs(never) do add(('%d=1'):format(id)) end
+        -- Names for both lists; an ID is never in both, but guard anyway.
+        local named, seen = {}, {}
+        for _, list in ipairs({ ids, never }) do
+            for _, id in ipairs(list) do if not seen[id] then seen[id] = true; named[#named + 1] = id end end
+        end
+        table.sort(named)                                   -- ascending order
         add('[ItemNames]')
-        for _, id in ipairs(ids) do   -- one name line per checked ID
+        for _, id in ipairs(named) do   -- one name line per listed ID
             -- Same cleaning as parse, so a save then load is lossless.
             local n = (rec.names[id] or ''):gsub('%c', ''):sub(1, maxName)
             add(('%d=%s'):format(id, n))
@@ -665,7 +714,7 @@ do
         local self = {
             path = path,                                    -- INI file
             opts = opts or {},                              -- limits from config
-            record = { selected = {}, names = {}, extra = {}, protectedBagsText = nil },
+            record = { selected = {}, neverSell = {}, names = {}, extra = {}, protectedBagsText = nil },
             status = 'new',          -- see header for allowed values
             statusDetail = '',                              -- human text for the UI
             warnings = {},                                  -- from the last parse
@@ -732,20 +781,57 @@ do
       WHY   : Saving is a separate, verified step; this only prepares what
               the next save will write.
       WHERE : init.lua save().
-      HOW   : Copies only true entries with numeric IDs, taking each name
-              from the given table, then the old record, then ''.
+      HOW   : Copies only true entries with numeric IDs that are not Never
+              Sell, taking each name from the given table, then the old
+              record, then ''. Names of Never Sell items are kept.
       WHEN  : Right before each save.
     ----------------------------------------------------------------------]]
     --- Replace the checked set (in memory only). names: [id]=name
     function store:setSelections(selected, names)
         local sel, nm = {}, {}                              -- fresh tables
+        local never = self.record.neverSell or {}           -- protected IDs
         for id, on in pairs(selected) do
-            if on and type(id) == 'number' then
+            if on and type(id) == 'number' and not never[id] then   -- Never Sell is never saved as checked
                 sel[id] = true
                 nm[id] = names[id] or self.record.names[id] or ''   -- best known name
             end
         end
+        -- Keep the names of Never Sell items so the file stays readable.
+        for id in pairs(never) do nm[id] = names[id] or self.record.names[id] or '' end
         self.record.selected, self.record.names = sel, nm
+    end
+
+    --[[--------------------------------------------------------------------
+      store:setNeverSell(neverSell, names)
+
+      WHAT  : Replaces the in memory Never Sell set and the names of those
+              items. Does not save, and does not touch unsaved checks.
+      WHY   : Never Sell must persist the moment it is ticked or unticked,
+              but saving it must not also save checkbox changes the player
+              has not chosen to save yet. So only the Never Sell set
+              changes; record.selected stays as last saved, minus any ID
+              that is now Never Sell.
+      WHERE : init.lua saveNeverSell(), added in 1.4.0.
+      HOW   : Copies true entries with numeric IDs; removes those IDs from
+              record.selected; rebuilds names for the saved checks plus the
+              Never Sell items, from the given table, the old record, or ''.
+      WHEN  : Right before the save that follows a Never Sell click.
+    ----------------------------------------------------------------------]]
+    --- Replace the Never Sell set (in memory only). names: [id]=name
+    function store:setNeverSell(neverSell, names)
+        local ns = {}                                       -- fresh set
+        for id, on in pairs(neverSell) do
+            if on and type(id) == 'number' then ns[id] = true end   -- valid IDs only
+        end
+        local sel = {}                                      -- last saved checks
+        for id in pairs(self.record.selected) do
+            if not ns[id] then sel[id] = true end           -- Never Sell wins
+        end
+        local nm = {}                                       -- names for both lists
+        for _, set in ipairs({ sel, ns }) do
+            for id in pairs(set) do nm[id] = names[id] or self.record.names[id] or '' end
+        end
+        self.record.selected, self.record.neverSell, self.record.names = sel, ns, nm   -- ready for save
     end
 
     --[[--------------------------------------------------------------------
@@ -760,7 +846,7 @@ do
       HOW   : 1. Refuse when read only.
               2. Serialize and write <file>.tmp.
               3. Read the temp file back, parse it, and compare the checked
-                 set both ways.
+                 set and the Never Sell set both ways.
               4. Copy the current file to <file>.bak.
               5. Remove the current file (Windows os.rename will not
                  overwrite) and rename the temp file into place; on failure
@@ -792,6 +878,10 @@ do
             -- Every checked ID must be in the file and nothing extra.
             for id in pairs(self.record.selected) do if not verify.selected[id] then same = false end end
             for id in pairs(verify.selected) do if not self.record.selected[id] then same = false end end
+            -- Same both way check for Never Sell (1.4.0).
+            local ns = self.record.neverSell or {}
+            for id in pairs(ns) do if not verify.neverSell[id] then same = false end end
+            for id in pairs(verify.neverSell) do if not ns[id] then same = false end end
         end
         if not same then   -- mismatch: discard temp file
             os.remove(tmp)   -- remove unverified temp
@@ -855,7 +945,8 @@ end
 --[[==========================================================================
   END OF SECTION : store
   PUBLIC : encodeName, parseProtectedBags, parse, serialize, new,
-           store:load, store:setSelections, store:save, store:protectedBags
+           store:load, store:setSelections, store:setNeverSell (1.4.0),
+           store:save, store:protectedBags
 ==========================================================================]]--
 
 -- Hand both section tables to init.lua.
@@ -868,7 +959,7 @@ return { log = log, store = store }
     log    configure, event, debug, info, warn, error, ring, ringVersion,
            filePath
     store  encodeName, parseProtectedBags, parse, serialize, new, and the
-           methods load, setSelections, save, protectedBags
+           methods load, setSelections, setNeverSell, save, protectedBags
 
   DEPENDENCIES : standard Lua io, os, string, table only. No mq.
 

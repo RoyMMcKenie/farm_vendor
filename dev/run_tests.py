@@ -2,8 +2,12 @@
 =============================================================================
   FILE        : Farm_Vendor/dev/run_tests.py
   PACKAGE     : Farm Vendor  (MacroQuest Lua / EverQuest)
-  VERSION     : 1.3.0
-  CHANGES     : 1.3.0  Moved from tests/ to dev/. Works from any clone
+  VERSION     : 1.4.0
+  CHANGES     : 1.4.0  Scenarios 32 to 37: Never Sell (saved at once,
+                       loaded, wins over a check, manual untick, read only
+                       file, buildProposal guard) and Select All. 37
+                       scenarios.
+                1.3.0  Moved from tests/ to dev/. Works from any clone
                        folder name: a temporary folder with a link (or copy)
                        named Farm_Vendor points at the package, so
                        require('Farm_Vendor.<file>') resolves exactly as in
@@ -20,7 +24,7 @@
 
   CREDITS     : Original to Farm Vendor.
 
-  WHAT  : Runs 31 offline scenarios against the real package files, using
+  WHAT  : Runs 37 offline scenarios against the real package files, using
           the fake MacroQuest in dev/harness.lua, and prints PASS or FAIL
           for each.
 
@@ -110,7 +114,7 @@ def scenario(name, setup, check, mode=None, ini=None, cfg=None, args=(), legacy=
             files, fast timeouts, optional mode and config overrides, the
             scenario's setup Lua, then init.lua with args, then check().
             Any UI or internal error fails the scenario unless expected.
-    WHEN  : 31 times per run.
+    WHEN  : 37 times per run.
     """
     d = tempfile.mkdtemp()
     lua = luajit21.LuaRuntime(unpack_returned_tuples=True)
@@ -705,6 +709,172 @@ H.on(function() return HARNESS.windows['Confirm Sale##fv_confirm'] end, function
 H.on(function() return H.outHas('ui.render_error') end, function() HARNESS.failText = nil; H.press('Cancel##fv_confirm_cancel') end)
 H.on(function() return true end, function() H.press('Cancel##fv_cancel') end)
 """, c31, mode='preview', ini=INI_OK, expect_ui_error=True)
+
+# ---------------------------------------------------------------------------
+# 1.4.0: Never Sell and Select All (scenarios 32 to 37)
+# ---------------------------------------------------------------------------
+INI_PATH = 'Farm_Vendor_test%20server_TestMag.ini'
+
+def ini_text(d):
+    """
+    WHAT  : Returns the scenario's INI text, or '' if there is none.
+    WHY   : Several Never Sell checks read the saved file.
+    WHERE : Check functions 32 to 37.
+    HOW   : Plain file read.
+    WHEN  : After a scenario ran.
+    """
+    p = os.path.join(d, INI_PATH)
+    return open(p).read() if os.path.exists(p) else ''
+
+def section(text, name):
+    """
+    WHAT  : Returns the key=value lines of one INI section as a list.
+    WHY   : Lets checks ask "is 10037=1 under [NeverSell]" precisely.
+    WHERE : Check functions 32 to 37.
+    HOW   : Collects lines after [name] up to the next [header].
+    WHEN  : After a scenario ran.
+    """
+    out, inside = [], False
+    for line in text.splitlines():
+        if line.startswith('['):
+            inside = (line == '[' + name + ']')
+        elif inside and line.strip():
+            out.append(line.strip())
+    return out
+
+# 32 ticking Never Sell saves at once, drops the check, and the item is never sold
+def c32(lua, d, err):
+    """
+    WHAT  : Check for scenario: never sell: ticking it saves at once, removes the check, and the item is not sold
+    WHY   : Proves the core 1.4.0 promise after every change.
+    WHERE : Passed to scenario() just below.
+    HOW   : Reads the fake world, console output and INI after the run.
+    WHEN  : Once, after its scenario finishes.
+    """
+    ini = ini_text(d)
+    ok = (err is None and G(lua,"HARNESS.stack(24,nil)")==3 and G(lua,"HARNESS.stack(23,0)")==0
+          and '10037=1' in section(ini,'NeverSell') and '10037=1' not in section(ini,'SelectedItems')
+          and '13073=1' in section(ini,'SelectedItems') and '10037=Diamond' in section(ini,'ItemNames')
+          and G(lua,"HARNESS.outHas('neversell.saved')") and '[Custom]' in ini)
+    return ok, ini
+scenario('never sell: ticking it saves at once, removes the check, and the item is not sold', r"""
+H.std()
+H.on(function() return HARNESS.frame>2 end, function() HARNESS.never[10037] = true end)
+H.on(function() return H.outHas('neversell.saved') end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##fv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##fv_cancel') end)
+""", c32, mode='live', ini=INI_OK)
+
+# 33 Never Sell persists across a restart and wins over a check in the file
+INI_NS = INI_OK.replace('[ItemNames]', '[NeverSell]\n10037=1\n[ItemNames]')
+def c33(lua, d, err):
+    """
+    WHAT  : Check for scenario: never sell: loaded from the INI, wins over a check, survives Select All and a click on Sell
+    WHY   : Persistence across sessions, and a hand edited file listing
+            the item in both sections must still never sell it.
+    WHERE : Passed to scenario() just below.
+    HOW   : Reads the fake world, console output and INI after the run.
+    WHEN  : Once, after its scenario finishes.
+    """
+    ini = ini_text(d)
+    ok = (err is None and G(lua,"HARNESS.stack(24,nil)")==3 and G(lua,"HARNESS.stack(23,2)")==0
+          and G(lua,"HARNESS.outHas('kept as Never Sell')") and G(lua,"HARNESS.drawn['##never:10037']==true")
+          and '10037=1' in section(ini,'NeverSell') and '10037=1' not in section(ini,'SelectedItems')
+          and '5021=1' in section(ini,'SelectedItems'))
+    return ok, ini
+scenario('never sell: loaded from the INI, wins over a check, survives Select All and a click on Sell', r"""
+H.std()
+H.on(function() return HARNESS.frame>2 end, function() HARNESS.checks[10037] = true; H.press('Select All') end)
+H.on(function() return HARNESS.frame>5 end, function() H.press('Sell All Checked Items') end)
+H.on(function() return HARNESS.windows['Confirm Sale##fv_confirm'] end, function() H.press('Confirm Sale') end)
+H.on(function() return H.outHas('run.end') end, function() H.press('Cancel##fv_cancel') end)
+""", c33, mode='live', ini=INI_NS)
+
+# 34 Select All checks listed eligible rows only; Clear Checks; Never Sell untouched
+def c34(lua, d, err):
+    """
+    WHAT  : Check for scenario: select all: checks eligible listed rows, skips Never Sell and excluded rows; neither button changes Never Sell
+    WHY   : Select All and Clear Checks must never remove the protection.
+    WHERE : Passed to scenario() just below.
+    HOW   : Compares the checkbox values drawn after each press.
+    WHEN  : Once, after its scenario finishes.
+    """
+    a = lua.eval("HARNESS.afterSelect"); c = lua.eval("HARNESS.afterClear")
+    ok = (err is None and a['s13073'] is True and a['s10037'] is True and a['s5021'] is False and a['n5021'] is True
+          and a['s7777'] is None and c['s13073'] is False and c['n5021'] is True
+          and ini_text(d) == INI_OK.replace('[ItemNames]', '[NeverSell]\n5021=1\n[ItemNames]'))
+    return ok, f"after select {dict(a)} after clear {dict(c)}"
+scenario('select all: checks eligible listed rows, skips Never Sell and excluded rows; neither button changes Never Sell', r"""
+H.std()
+local function snap() local D = HARNESS.drawn
+  return { s13073=D['##sell:13073'], s10037=D['##sell:10037'], s5021=D['##sell:5021'], n5021=D['##never:5021'], s7777=D['##sell:7777'] } end
+H.on(function() return HARNESS.frame>2 end, function() H.press('Clear Checks') end)
+H.on(function() return HARNESS.frame>4 end, function() HARNESS.drawn = {}; H.press('Select All') end)
+H.on(function() return HARNESS.frame>6 end, function() HARNESS.afterSelect = snap(); HARNESS.drawn = {}; H.press('Clear Checks') end)
+H.on(function() return HARNESS.frame>8 end, function() HARNESS.afterClear = snap(); H.press('Cancel##fv_cancel') end)
+""", c34, mode='preview', ini=INI_OK.replace('[ItemNames]', '[NeverSell]\n5021=1\n[ItemNames]'))
+
+# 35 manual untick removes Never Sell at once and does not save unsaved checks
+def c35(lua, d, err):
+    """
+    WHAT  : Check for scenario: never sell: a manual untick removes it at once; unsaved Sell checks are not written
+    WHY   : The only way to remove Never Sell is a manual untick, and that
+            save must not quietly save other changes the player discarded.
+    WHERE : Passed to scenario() just below.
+    HOW   : Reads the INI and console output after the run.
+    WHEN  : Once, after its scenario finishes.
+    """
+    ini = ini_text(d)
+    ok = (err is None and section(ini,'NeverSell') == [] and '5021=1' not in section(ini,'SelectedItems')
+          and '13073=1' in section(ini,'SelectedItems') and G(lua,"HARNESS.outHas('count=0')")
+          and G(lua,"HARNESS.outHas('shutdown.discarded_unsaved')"))
+    return ok, ini
+scenario('never sell: a manual untick removes it at once; unsaved Sell checks are not written', r"""
+H.std()
+H.on(function() return HARNESS.frame>2 end, function() HARNESS.checks[5021] = true end)
+H.on(function() return HARNESS.frame>4 end, function() HARNESS.never[10037] = false end)
+H.on(function() return H.outHas('neversell.saved') end, function() H.press('Cancel##fv_cancel') end)
+""", c35, mode='preview', ini=INI_NS.replace('[SelectedItems]\n13073=1\n10037=1', '[SelectedItems]\n13073=1'))
+
+# 36 buildProposal leaves Never Sell out even when it is checked
+def c36(lua, d, err):
+    """
+    WHAT  : Check for scenario: never sell: buildProposal leaves the item out even when it is checked
+    WHY   : Second guard behind the disabled checkbox, tested on its own.
+    WHERE : Passed to scenario() just below.
+    HOW   : Calls seller:buildProposal directly with and without the set.
+    WHEN  : Once, after its scenario finishes.
+    """
+    r = lua.eval("""(function()
+      local e = require('Farm_Vendor.engine'); local s = e.seller.new(require('Farm_Vendor.config'), require('Farm_Vendor.core').log)
+      local scan = { rows = { { id = 1, name = 'A', eligible = true, eligibleQty = 2, eligibleStacks = 1, reasonText = '',
+        entries = { { id = 1, name = 'A', stack = 2, topSlot = 23, pack = 1, sub = 0 } } } } }
+      return s:buildProposal(scan, { [1] = true }).totalStacks * 10 + s:buildProposal(scan, { [1] = true }, { [1] = true }).totalStacks
+    end)()""")
+    return err is None and r == 10, f"r={r}"
+scenario('never sell: buildProposal leaves the item out even when it is checked', r"""
+H.std()
+H.on(function() return HARNESS.frame>2 end, function() H.press('Cancel##fv_cancel') end)
+""", c36)
+
+# 37 read only file: Never Sell still enforced this session, file untouched
+BAD_NS = "[Meta]\nSchema=7\n[SelectedItems]\n10037=1\n"
+def c37(lua, d, err):
+    """
+    WHAT  : Check for scenario: never sell: on a read only file the save fails safely, file untouched, nothing sold
+    WHY   : A failed save must never be reported as done or damage the file.
+    WHERE : Passed to scenario() just below.
+    HOW   : Reads the INI, console output and command list after the run.
+    WHEN  : Once, after its scenario finishes.
+    """
+    return (err is None and ini_text(d) == BAD_NS and G(lua,"HARNESS.outHas('neversell.save_failed')")
+            and G(lua,"HARNESS.drawn['##never:10037']==true") and G(lua,"#HARNESS.cmds")==0), ini_text(d)
+scenario('never sell: on a read only file the save fails safely, file untouched, nothing sold', r"""
+H.std()
+H.on(function() return HARNESS.frame>2 end, function() HARNESS.never[10037] = true end)
+H.on(function() return H.outHas('neversell.save_failed') end, function() HARNESS.drawn = {} end)
+H.on(function() return HARNESS.frame>8 end, function() H.press('Cancel##fv_cancel') end)
+""", c37, mode='live', ini=BAD_NS)
 
 p = sum(1 for r in results if r[1])
 for n, ok, m in results:

@@ -1,7 +1,7 @@
 <!--
   FILE    : Farm_Vendor/README.md
   PACKAGE : Farm Vendor Lua (MacroQuest / EverQuest)
-  VERSION : 1.3.0
+  VERSION : 1.4.0
   WHAT    : What Farm Vendor does, how to install and run it, the modes,
             commands and safeguards, the package layout and the credits.
   WHY     : First thing to read before running or editing the package.
@@ -9,11 +9,11 @@
             external interface, TESTING.md the tests, CHANGELOG.md versions.
   WHEN    : Read before first use; update when behaviour or commands change.
 -->
-# Farm Vendor 1.3.0
+# Farm Vendor 1.4.0
 
 A MacroQuest Lua inventory seller. It lists what you carry, remembers the items you check in a per character INI, and sells only what you confirm, one verified stack at a time. It uses documented interfaces only, fails closed, and is tested in stages.
 
-Version 1.3.0 is the consolidated, fully documented release of 1.2.2. Selling logic is unchanged from 1.2.2, which was validated live in the client on 2026-10-13. It ships in live mode.
+Version 1.4.0 adds Select All and a persistent Never Sell checkbox. The selling, selection and quote code is unchanged from 1.2.2, which was validated live in the client on 2026-10-13. Run 1.4.0 in `preview` and `selecttest` before live (TESTING.md, v1.4.0 check). It ships in live mode.
 
 ## Install and run
 
@@ -32,13 +32,22 @@ Upgrading from `magfarm_vendor`: the first run copies your saved checks from the
 ## Use
 
 1. Open a merchant yourself, open your bags, and empty your cursor.
-2. Check the items to sell. Saved checks are pre ticked; new items start unchecked.
-3. Sell All Checked Items opens a confirmation window with the exact items, quantities and estimate.
-4. Confirm Sale saves your checks and sells each stack. Cancel there returns with nothing saved or sold.
-5. Stop Selling or `/fvendor stop` stops before the next item. Completed sales cannot be undone.
-6. Cancel or the window X exits and discards unsaved changes.
+2. Check the items to sell, or press Select All to check every listed item that can be sold. Saved checks are pre ticked; new items start unchecked.
+3. Tick Never Sell on anything you want to keep. See "Never Sell" below.
+4. Sell All Checked Items opens a confirmation window with the exact items, quantities and estimate.
+5. Confirm Sale saves your checks and sells each stack. Cancel there returns with nothing saved or sold.
+6. Stop Selling or `/fvendor stop` stops before the next item. Completed sales cannot be undone.
+7. Cancel or the window X exits and discards unsaved changes.
 
 A checked item means every eligible carried copy, in every unprotected bag.
+
+## Never Sell
+
+* A Never Sell item cannot be checked or sold. Its Sell box is greyed out and the Notes column says Never Sell.
+* It is saved to the INI the moment you tick it, so it stays after Cancel or a restart.
+* Only unticking the box yourself removes it. Select All and Clear Checks never change it.
+* The sale list leaves Never Sell items out even if one is checked by hand in the INI.
+* To remove Never Sell from an item you no longer carry, carry it again and untick the box, or delete its line under `[NeverSell]` in the INI while the script is not running.
 
 ## Modes
 
@@ -60,6 +69,7 @@ A launch argument (`preview` or `selecttest`) can lower the mode for one session
 
 ## Safeguards
 
+* Never Sell items are never checked or sold, and only a manual untick removes the protection.
 * Never sells on launch, never navigates, targets, opens merchants or moves cursor items.
 * Reads pack slots only. Bags, protected packs, zero value and unreadable items are excluded; NO DROP and Lore exclusions are optional. Items the open merchant will not price are skipped for that merchant.
 * Selling requires: in game, empty cursor, no macro running, merchant open and loaded, writable selections file, valid protected bag list.
@@ -73,7 +83,7 @@ A launch argument (`preview` or `selecttest`) can lower the mode for one session
 
 | Location | Contents |
 |---|---|
-| `<MQ config>/Farm_Vendor_<server>_<character>.ini` | Checks, optional `ProtectedBags=1,2`, `.bak` of the previous save |
+| `<MQ config>/Farm_Vendor_<server>_<character>.ini` | Checks, Never Sell items, optional `ProtectedBags=1,2`, `.bak` of the previous save |
 | `<MQ config>/Farm_Vendor_<server>_<character>.log` | Structured log, rotated to `.log.1` |
 
 All settings are in `config.lua`, each commented with purpose, range and default. Invalid values stop startup with a list of what to fix.

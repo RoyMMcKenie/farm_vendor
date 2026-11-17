@@ -1,8 +1,10 @@
 --[[==========================================================================
   FILE        : Farm_Vendor/config.lua
   PACKAGE     : Farm Vendor  (MacroQuest Lua / EverQuest)
-  VERSION     : 1.3.0
-  CHANGES     : 1.3.0  VERSION set to 1.3.0. No setting changed. Header,
+  VERSION     : 1.4.0
+  CHANGES     : 1.4.0  VERSION set to 1.4.0. No setting changed; Never Sell
+                       and Select All need no settings.
+                1.3.0  VERSION set to 1.3.0. No setting changed. Header,
                        footer and function documentation brought to the
                        project standard. Kept as its own file on purpose:
                        it is the one file players are expected to edit.
@@ -68,7 +70,7 @@ config.SCRIPT_NAME = 'Farm_Vendor'
 config.LEGACY_SCRIPT_NAME = 'magfarm_vendor'
 
 -- Version string shown in the window title and written to every log line set.
-config.VERSION = '1.3.0'
+config.VERSION = '1.4.0'
 
 -- Slash command registered with mq.bind for emergency control:
 --   /fvendor stop   -> stop selling before the next item

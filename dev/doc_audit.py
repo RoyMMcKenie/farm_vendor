@@ -2,8 +2,11 @@
 =============================================================================
   FILE        : Farm_Vendor/dev/doc_audit.py
   PACKAGE     : Farm Vendor  (MacroQuest Lua / EverQuest)
-  VERSION     : 1.3.0
-  CHANGES     : 1.3.0  First version for Farm Vendor, adapted from the
+  VERSION     : 1.4.0
+  CHANGES     : 1.4.0  The header is looked for in the first 90 lines (was
+                       60): CHANGES grows with every release, and the
+                       init.lua and ui.lua headers passed 60 lines.
+                1.3.0  First version for Farm Vendor, adapted from the
                        SkillMaster audit (same seven checks).
                        'end,' and '},' count as structure lines.
 
@@ -120,7 +123,7 @@ def audit_file(path, version):
     with open(path, encoding='utf-8') as fh:
         text = fh.read()
     lines = text.split('\n')
-    header = '\n'.join(lines[:60])     # header is always in the first 60 lines
+    header = '\n'.join(lines[:90])     # header is always in the first 90 lines
     footer = '\n'.join(lines[-80:])    # footer is always in the last 80 lines
 
     # Check 1: header labels.

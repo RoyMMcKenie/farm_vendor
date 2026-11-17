@@ -1,8 +1,14 @@
 --[[==========================================================================
   FILE        : Farm_Vendor/ui.lua
   PACKAGE     : Farm Vendor  (MacroQuest Lua / EverQuest)
-  VERSION     : 1.3.0
-  CHANGES     : 1.3.0  Loads the inventory helpers from Farm_Vendor.engine
+  VERSION     : 1.4.0
+  CHANGES     : 1.4.0  Never Sell column: a per item checkbox that blocks
+                       the Sell checkbox, removes an existing check, and is
+                       saved at once (request saveNeverSell). Only a manual
+                       untick removes it. Select All button checks every
+                       listed, eligible item that is not Never Sell. Clear
+                       Checks and Select All never change Never Sell.
+                1.3.0  Loads the inventory helpers from Farm_Vendor.engine
                        (inventory now lives there). No drawing or behaviour
                        change. Header, footer, function documentation and
                        line comments brought to the project standard.
@@ -23,8 +29,9 @@
 
   WHAT  : The two ImGui windows.
             Main window     Character and merchant status, readiness line,
-                            search and filters, the item checklist, buttons
-                            (Clear Checks, Save Selections, Sell All
+                            search and filters, the item checklist with Sell
+                            and Never Sell columns, buttons (Select All,
+                            Clear Checks, Save Selections, Sell All
                             Checked Items, Cancel), progress with the Stop
                             Selling button, the last run report, and the
                             Activity Log.
@@ -285,15 +292,20 @@ end
 --[[------------------------------------------------------------------------
   drawTable(app)  (private)
 
-  WHAT  : The item checklist: Sell checkbox, Item, Qty, Stacks, Est. each,
-          Flags and Notes columns.
-  WHY   : This is where the player chooses what to sell. Checks are kept
-          in app.checked and saved only on Save Selections or Confirm Sale.
+  WHAT  : The item checklist: Sell checkbox, Never Sell checkbox, Item,
+          Qty, Stacks, Est. each, Flags and Notes columns.
+  WHY   : This is where the player chooses what to sell, and what must
+          never be sold. Checks are kept in app.checked and saved only on
+          Save Selections or Confirm Sale. Never Sell is kept in
+          app.neverSell and saved the moment it changes, because it is a
+          standing protection that must survive Cancel.
   WHERE : Middle of the main window (ui.render).
   HOW   : One table row per visible scan row, each inside PushID(row.id)
-          so checkbox IDs are unique. The checkbox is disabled for rows
-          with no eligible stack and during a run. Height leaves room for
-          the buttons, progress and log below.
+          so checkbox IDs are unique. The Sell checkbox is disabled for
+          rows with no eligible stack, for Never Sell rows and during a
+          run. The Never Sell checkbox is disabled only during a run; it is
+          the only way to set or remove Never Sell. Ticking it unticks the
+          Sell box. Height leaves room for the buttons, progress and log.
   WHEN  : Every frame after the first scan.
 --------------------------------------------------------------------------]]
 local function drawTable(app)
@@ -305,11 +317,12 @@ local function drawTable(app)
     local _, availY = ImGui.GetContentRegionAvail()
     local reserved = app.cfg.ACTIVITY_LOG_HEIGHT + 190      -- room for buttons, progress, log
     local height = math.max(120, (availY or 400) - reserved)
-    if ImGui.BeginTable('##fv_items', 7, flags, 0, height) then
+    if ImGui.BeginTable('##fv_items', 8, flags, 0, height) then
         local ok, err = pcall(function()
             -- Header row stays visible while scrolling.
             ImGui.TableSetupScrollFreeze(0, 1)
             ImGui.TableSetupColumn('Sell', ImGuiTableColumnFlags.WidthFixed, 36)
+            ImGui.TableSetupColumn('Never Sell', ImGuiTableColumnFlags.WidthFixed, 70)   -- 1.4.0
             ImGui.TableSetupColumn('Item', ImGuiTableColumnFlags.WidthStretch, 3)
             -- (columns continued)
             ImGui.TableSetupColumn('Qty', ImGuiTableColumnFlags.WidthFixed, 50)
@@ -327,14 +340,31 @@ local function drawTable(app)
                     ImGui.TableNextRow()
                     -- Sell checkbox.
                     ImGui.TableNextColumn()
-                    ImGui.BeginDisabled(app.seller.running or not row.eligible)
+                    local never = app.neverSell[row.id] == true   -- Never Sell blocks the Sell box
+                    ImGui.BeginDisabled(app.seller.running or not row.eligible or never)
                     local val, pressed = ImGui.Checkbox('##sell', app.checked[row.id] == true)
                     ImGui.EndDisabled()              -- pairs with BeginDisabled
                     -- Record a click; re-checked here as well as by BeginDisabled.
-                    if pressed and row.eligible and not app.seller.running then
+                    if pressed and row.eligible and not never and not app.seller.running then
                         app.checked[row.id] = val or nil
                         app.names[row.id] = row.name     -- for [ItemNames] in the INI
                         app.dirty = true                 -- shows Unsaved changes
+                    end
+                    -- Never Sell checkbox (1.4.0): only a manual click sets or removes it.
+                    ImGui.TableNextColumn()
+                    ImGui.BeginDisabled(app.seller.running)   -- no changes mid run
+                    local nval, npressed = ImGui.Checkbox('##never', never)
+                    ImGui.EndDisabled()              -- pairs with BeginDisabled
+                    tooltip('Never Sell: this item can never be checked or sold until you untick this box. Saved at once.')   -- explain the column
+                    if npressed and not app.seller.running then
+                        if nval then   -- ticked: protect it
+                            app.neverSell[row.id] = true
+                            if app.checked[row.id] then app.checked[row.id] = nil; app.dirty = true end   -- drop any check
+                        else   -- unticked by hand: the only way to remove it
+                            app.neverSell[row.id] = nil
+                        end
+                        app.names[row.id] = row.name     -- for [ItemNames] in the INI
+                        app.requests.saveNeverSell = true   -- main loop saves it now
                     end
                     -- Item name, with its ID on hover.
                     ImGui.TableNextColumn(); ImGui.TextUnformatted(row.name)
@@ -357,7 +387,9 @@ local function drawTable(app)
                     if f ~= '' then tooltip('ND = NO DROP / NO TRADE, L = Lore') end   -- explain the letters
                     -- Notes: why a row, or some of its stacks, cannot be sold.
                     ImGui.TableNextColumn()
-                    if not row.eligible then
+                    if never then   -- protection note comes first
+                        colored(COLOR.ok, 'Never Sell')
+                    elseif not row.eligible then
                         colored(COLOR.dim, 'Excluded: ' .. row.reasonText)
                     elseif row.reasonText ~= '' then   -- some stacks excluded
                         colored(COLOR.warn, ('%d of %d stacks eligible (%s)'):format(row.eligibleStacks, row.stacks, row.reasonText))   -- e.g. 2 of 3 stacks eligible
@@ -379,47 +411,57 @@ end
   selectionSummary(app)  (private)
 
   WHAT  : Returns how many checked item types are carried and eligible,
-          their total eligible quantity, and how many remembered checks are
-          not currently carried.
+          their total eligible quantity, how many remembered checks are
+          not currently carried, and how many items are Never Sell.
   WHY   : Feeds the Selected line and enables Sell All Checked Items only
           when there is something to sell.
   WHERE : drawButtons.
-  HOW   : Looks each checked ID up in app.scan.rowsById.
+  HOW   : Looks each checked ID up in app.scan.rowsById, skipping Never
+          Sell IDs, then counts app.neverSell.
   WHEN  : Every frame.
 --------------------------------------------------------------------------]]
 local function selectionSummary(app)
-    local types, qty, missing = 0, 0, 0
+    local types, qty, missing, never = 0, 0, 0, 0
+    for _ in pairs(app.neverSell) do never = never + 1 end   -- protected items (1.4.0)
     -- Count every remembered check against the current scan.
     for id in pairs(app.checked) do
         local row = app.scan and app.scan.rowsById[id]
-        if row and row.eligible then
+        if app.neverSell[id] then
+            -- Never Sell wins; such a check cannot be sold, so it is not counted.
+        elseif row and row.eligible then
             types = types + 1; qty = qty + row.eligibleQty   -- carried and sellable
         else
             missing = missing + 1                            -- remembered, not carried
         end
     end
-    return types, qty, missing
+    return types, qty, missing, never
 end
 
 --[[------------------------------------------------------------------------
   drawButtons(app)  (private)
 
-  WHAT  : The Selected summary line and the Clear Checks, Save Selections,
-          Sell All Checked Items and Cancel buttons.
+  WHAT  : The Selected summary line and the Select All, Clear Checks,
+          Save Selections, Sell All Checked Items and Cancel buttons.
   WHY   : These are the player's actions. None of them sells directly:
           Sell All Checked Items only opens the Confirm window.
   WHERE : Under the table (ui.render).
-  HOW   : Clear Checks unticks listed rows only. Save, Sell and Cancel set
-          app.requests flags for the main loop. Everything is disabled
-          during a run.
+  HOW   : Select All ticks every row the filters currently show that has
+          an eligible stack and is not Never Sell (1.4.0). Clear Checks
+          unticks listed rows only. Neither touches app.neverSell. Save,
+          Sell and Cancel set app.requests flags for the main loop.
+          Everything is disabled during a run.
   WHEN  : Every frame.
 --------------------------------------------------------------------------]]
 local function drawButtons(app)
-    local types, qty, missing = selectionSummary(app)
+    local types, qty, missing, never = selectionSummary(app)
     ImGui.TextUnformatted(('Selected: %d item type(s) / %d item(s) carried'):format(types, qty))
     if missing > 0 then   -- checks for items not in bags
         ImGui.SameLine()   -- same line
         colored(COLOR.dim, ('  (%d remembered item(s) not currently carried)'):format(missing))   -- grey note
+    end
+    if never > 0 then   -- Never Sell count (1.4.0)
+        ImGui.SameLine()
+        colored(COLOR.dim, ('  %d Never Sell item(s)'):format(never))
     end
     -- Count of items hidden because they are in a protected bag.
     if app.scan and app.scan.protectedCount > 0 then
@@ -430,13 +472,25 @@ local function drawButtons(app)
     local running = app.seller.running   -- true while the worker runs
     ImGui.BeginDisabled(running)                             -- no changes mid run
     local ok, err = pcall(function()
+    if ImGui.Button('Select All##fv_select_all') then
+        -- Ticks listed, sellable rows only. Never Sell rows are skipped and keep Never Sell.
+        for _, row in ipairs(app.scan and app.scan.rows or {}) do
+            if rowVisible(app, row) and row.eligible and not app.neverSell[row.id] and not app.checked[row.id] then
+                app.checked[row.id] = true
+                app.names[row.id] = row.name     -- for [ItemNames] in the INI
+                app.dirty = true                 -- shows Unsaved changes
+            end
+        end
+    end
+    tooltip('Checks every listed item that can be sold. Never Sell items are skipped and stay Never Sell.')   -- explain Select All
+    ImGui.SameLine()   -- next button on the same line
     if ImGui.Button('Clear Checks##fv_clear') then
         -- Clears only currently listed items; remembered items not carried stay remembered.
         for _, row in ipairs(app.scan and app.scan.rows or {}) do
             if app.checked[row.id] then app.checked[row.id] = nil; app.dirty = true end
         end
     end
-    tooltip('Unchecks listed items. Remembered items you are not carrying are kept.')   -- explain Clear Checks
+    tooltip('Unchecks listed items. Remembered items you are not carrying are kept. Never Sell is not changed.')   -- explain Clear Checks
     ImGui.SameLine()   -- next button on the same line
     -- Save only when there is something to save and the file is writable.
     ImGui.BeginDisabled(app.store.readonly or not app.dirty)

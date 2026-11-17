@@ -1,8 +1,11 @@
 --[[==========================================================================
   FILE        : Farm_Vendor/engine.lua
   PACKAGE     : Farm Vendor  (MacroQuest Lua / EverQuest)
-  VERSION     : 1.3.0
-  CHANGES     : 1.3.0  Consolidation. inventory.lua and seller.lua were
+  VERSION     : 1.4.0
+  CHANGES     : 1.4.0  seller section: buildProposal takes the Never Sell
+                       set and leaves those items out even if checked.
+                       inventory section unchanged.
+                1.3.0  Consolidation. inventory.lua and seller.lua were
                        merged into this one file as two sections. Code is
                        unchanged (token comparison against 1.2.2); the
                        seller section now uses the inventory section
@@ -386,7 +389,10 @@ end
 
 --[[==========================================================================
   SECTION     : seller   (was Farm_Vendor/seller.lua up to 1.2.2)
-  HISTORY     : 1.1.1  POST_QUOTE_DELAY_MS raised to 500; one bounded retry
+  HISTORY     : 1.4.0  buildProposal skips Never Sell items (second guard
+                       behind the disabled Sell checkbox).
+                1.3.0  Moved into engine.lua; no code change.
+                1.1.1  POST_QUOTE_DELAY_MS raised to 500; one bounded retry
                        when the merchant refuses right after a valid quote;
                        quotes must name the selected item.
                 1.2.0  Chat event names renamed fv_quote and fv_refusal.
@@ -602,16 +608,18 @@ do
     -- -----------------------------------------------------------------------
 
     --[[--------------------------------------------------------------------
-      seller:buildProposal(scan, checked)
+      seller:buildProposal(scan, checked, neverSell)
 
       WHAT  : Builds the exact sale list from a fresh scan and the checked
               IDs: item totals, every stack location, an estimate, and a
-              fingerprint string.
+              fingerprint string. Items in neverSell are always left out.
       WHY   : The Confirm Sale window must show exactly what will be sold,
               and the fingerprint lets init.lua detect any inventory change
               between Sell All Checked Items and Confirm Sale.
       WHERE : init.lua prepare() and confirm().
-      HOW   : Takes each checked, eligible row; totals quantity; adds the
+      HOW   : Takes each checked, eligible row that is not Never Sell (a
+              second guard: the UI already blocks checking those, and a
+              hand edited INI cannot get past this); totals quantity; adds the
               estimate only for items with a merchant price; lists every
               eligible stack; sorts stacks by slot and sub slot; the
               fingerprint is id@slot:sub#qty joined with |.
@@ -619,11 +627,12 @@ do
     ----------------------------------------------------------------------]]
     --- Build a proposal from a fresh scan and the checked IDs.
     --- @return table proposal
-    function seller:buildProposal(scan, checked)
+    function seller:buildProposal(scan, checked, neverSell)
+        neverSell = neverSell or {}                       -- optional; nil means none
         local items, entries = {}, {}                     -- per item, per stack
         local totalQty, estCopper, unpriced = 0, 0, 0
         for _, row in ipairs(scan.rows) do
-            if checked[row.id] and row.eligible then
+            if checked[row.id] and row.eligible and not neverSell[row.id] then   -- Never Sell is never proposed
                 -- Merchant price per unit, if this merchant quoted one.
                 local unit = row.sellPrice
                 local item = {

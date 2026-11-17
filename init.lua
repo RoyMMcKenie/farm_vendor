@@ -1,8 +1,12 @@
 --[[==========================================================================
   FILE        : Farm_Vendor/init.lua   (entry point)
   PACKAGE     : Farm Vendor  (MacroQuest Lua / EverQuest)
-  VERSION     : 1.3.0
-  CHANGES     : 1.3.0  Loads the consolidated files: core (log, store) and
+  VERSION     : 1.4.0
+  CHANGES     : 1.4.0  Never Sell: app.neverSell loaded from the INI, saved
+                       on its own the moment a box changes (saveNeverSell,
+                       request saveNeverSell), and passed to every
+                       buildProposal call so those items are never sold.
+                1.3.0  Loads the consolidated files: core (log, store) and
                        engine (inventory, seller), plus config and ui. The
                        local names log, store, inventory and sellerMod are
                        unchanged, so no other line of logic changed. Header,
@@ -252,6 +256,7 @@ local app = {
     scan = nil,                                      -- latest inventory scan
     checked = {},          -- [id] = true  (working copy; saved explicitly)
     names = {},            -- [id] = name  (for the INI readability section)
+    neverSell = {},        -- [id] = true  (1.4.0; saved the moment it changes)
     dirty = false,                                   -- unsaved changes?
     protected = {}, protectedError = nil,            -- protected packs
     readiness = {}, readyToSell = false,             -- readiness results
@@ -294,6 +299,8 @@ do
     if ok then   -- loaded (maybe with warnings)
         -- Copy the saved checks and names into the working tables.
         for id in pairs(app.store.record.selected) do app.checked[id] = true end
+        -- Never Sell items (1.4.0). The store already removed them from the checks.
+        for id in pairs(app.store.record.neverSell or {}) do app.neverSell[id] = true end
         for id, n in pairs(app.store.record.names) do app.names[id] = n end
         log.info('store.loaded', { status = app.store.status, selected = (function()
             local c = 0; for _ in pairs(app.checked) do c = c + 1 end; return c end)(), path = app.store.path })   -- count of loaded checks
@@ -354,7 +361,7 @@ local function rescan(reason)
     app.scan = result
     local eligible = 0                                   -- rows with a sellable stack
     for _, r in ipairs(result.rows) do if r.eligible then eligible = eligible + 1 end end
-    for _, r in ipairs(result.rows) do if app.checked[r.id] then app.names[r.id] = r.name end end
+    for _, r in ipairs(result.rows) do if app.checked[r.id] or app.neverSell[r.id] then app.names[r.id] = r.name end end
     log.info('inventory.scanned', { reason = reason, rows = #result.rows, eligible = eligible,
         protected_hidden = result.protectedCount })   -- items hidden in protected bags
     return true   -- scan succeeded
@@ -380,6 +387,36 @@ local function save(reason)
         log.error('store.save_failed', { reason = reason, detail = err })
     end
     return ok   -- caller decides what to do on failure
+end
+
+--[[------------------------------------------------------------------------
+  saveNeverSell()  (private, 1.4.0)
+
+  WHAT  : Writes the Never Sell set to the INI at once. Returns true on
+          success.
+  WHY   : Never Sell is a standing protection, so it must survive a Cancel
+          or a crash without the player pressing Save Selections. Unsaved
+          Sell checks are not written by this save; they still wait for
+          Save Selections or Confirm Sale.
+  WHERE : Main loop, when app.requests.saveNeverSell is set by a Never Sell
+          checkbox click in ui.lua.
+  HOW   : store:setNeverSell then store:save (atomic and verified). On
+          failure (for example a read only file) the protection still
+          applies for this session because app.neverSell is in memory;
+          the failure is logged.
+  WHEN  : Main loop only, on the pass after the click.
+--------------------------------------------------------------------------]]
+local function saveNeverSell()
+    app.store:setNeverSell(app.neverSell, app.names)
+    local ok, err = app.store:save()
+    local count = 0                                      -- how many are protected
+    for _ in pairs(app.neverSell) do count = count + 1 end
+    if ok then   -- verified save
+        log.info('neversell.saved', { count = count, path = app.store.path })
+    else
+        log.error('neversell.save_failed', { detail = err, note = 'still enforced for this session' })
+    end
+    return ok   -- logged either way
 end
 
 --[[------------------------------------------------------------------------
@@ -415,7 +452,7 @@ local function prepare()
     updateReadiness()
     if not app.readyToSell then log.warn('sale.prepare_blocked', {}); return end   -- a check failed
     if not rescan('prepare') then return end
-    local p = app.seller:buildProposal(app.scan, app.checked)
+    local p = app.seller:buildProposal(app.scan, app.checked, app.neverSell)   -- Never Sell left out
     if p.totalStacks == 0 then
         log.warn('sale.nothing_eligible', { note = 'no checked item has an eligible stack' })   -- nothing to show
         return
@@ -451,7 +488,7 @@ local function confirm()
     end
     -- Re-scan and compare: a changed inventory requires a new confirmation.
     if not rescan('confirm') then return end
-    local fresh = app.seller:buildProposal(app.scan, app.checked)
+    local fresh = app.seller:buildProposal(app.scan, app.checked, app.neverSell)   -- Never Sell left out
     if fresh.fingerprint ~= old.fingerprint then
         app.proposal = fresh                             -- show the new list
         app.confirmNotice = 'Inventory changed since this list was prepared. Review the updated list and confirm again.'
@@ -537,6 +574,7 @@ while app.running do
         -- Discard merchant chat lines that arrive while idle; each selection
         -- also flushes before it starts, so only fresh lines are ever counted.
         app.seller:flushMerchantEvents()
+        if r.saveNeverSell then saveNeverSell() end      -- a Never Sell box changed (1.4.0)
         if r.save then save('operator') end              -- Save Selections
         if r.cancelConfirm then
             -- Cancel or X on the Confirm window: nothing is sold.

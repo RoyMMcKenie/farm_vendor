@@ -1,7 +1,7 @@
 <!--
   FILE    : Farm_Vendor/TESTING.md
   PACKAGE : Farm Vendor Lua (MacroQuest / EverQuest)
-  VERSION : 1.3.0
+  VERSION : 1.4.0
   WHAT    : Offline tests, the client results so far, and the staged client
             checks to repeat after any change to selling code.
   WHY     : Program logic is proven offline; client behaviour only in game.
@@ -17,7 +17,7 @@ Rule: documented, then tested, then enabled. Passed checks stay passed unless th
 
 `python3 dev/run_tests.py` (needs `pip install lupa`) runs the real package under LuaJIT against a mock MacroQuest client (`dev/harness.lua`). It works from any folder name. `python3 dev/doc_audit.py` checks the documentation standard (headers, footers, function blocks, line comments, versions). `dev/sample_console_output.txt` shows a passing run. The mock merchant quotes after a delay and refuses a sale sent before the quote, as the client did. The harness also fails any frame that leaves an ImGui begin/end or push/pop pair open. These tests prove program logic, not client behavior.
 
-Result for v1.3.0: 31 of 31 passed (same scenarios as 1.2.2; scenario 28 now reads the version from config.lua). doc_audit: all five Lua files pass.
+Result for v1.4.0: 37 of 37 passed. doc_audit: all five Lua files pass. Each of the new scenarios 32 to 37 was also run against a copy with its guard removed, and failed as it should.
 
 | Area | Scenarios |
 |---|---|
@@ -29,6 +29,7 @@ Result for v1.3.0: 31 of 31 passed (same scenarios as 1.2.2; scenario 28 now rea
 | Quotes | Unpriced item excluded (21); quote for another item ignored (24); backtick matches apostrophe (25) |
 | Rename | Old INI copied once, unchanged (26); existing new INI never overwritten (27); new prefix and title (28) |
 | Standards | `require('ImGui')` path and balanced pairs (29); draw error in a table row (30) or the confirm list (31) logged with stacks balanced |
+| Never Sell, Select All (1.4.0) | Ticking saves at once, drops the check, item not sold (32); loaded from the INI, wins over a check in the file, survives Select All and a click on Sell (33); Select All checks listed eligible rows only and neither Select All nor Clear Checks changes Never Sell (34); manual untick removes it at once without saving unsaved checks (35); sale list guard (36); read only file fails safely (37) |
 
 ## Client results
 
@@ -72,6 +73,20 @@ Stage 3, live:
 | 3.1 One stack, then several items | Each `sale.verified`; coin change near the estimate |
 | 3.2 Item the merchant will not buy | Fails at once ("not interested"); run stops by default |
 | 3.3 Item onto the cursor mid run | Stops; the script never moves it |
+
+## v1.4.0 check (Never Sell and Select All)
+
+Selling code is unchanged, but the window and the INI changed, so run these in `preview`, then `selecttest`, before live.
+
+| Check | Expected |
+|---|---|
+| N.1 Start | Title "Farm Vendor v1.4.0"; table shows a Never Sell column |
+| N.2 Tick Never Sell on a checked item | Its Sell box unticks and greys out; Notes says Never Sell; log `neversell.saved` |
+| N.3 Cancel, start again | That item is still Never Sell; the INI has it under `[NeverSell]` |
+| N.4 Select All | Every listed sellable item checked except Never Sell items |
+| N.5 Clear Checks | Checks removed; Never Sell boxes unchanged |
+| N.6 Sell All Checked Items, Confirm (preview, then selecttest) | Never Sell items are not in the Confirm list and are never selected |
+| N.7 Untick Never Sell | Sell box usable again; log `neversell.saved` |
 
 ## v1.3.0 check (one run)
 

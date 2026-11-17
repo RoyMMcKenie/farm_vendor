@@ -1,7 +1,7 @@
 <!--
   FILE    : Farm_Vendor/ARCHITECTURE.md
   PACKAGE : Farm Vendor Lua (MacroQuest / EverQuest)
-  VERSION : 1.3.0
+  VERSION : 1.4.0
   WHAT    : How the package is built: file and section map, the request
             flag pattern, one sale step by step, the documentation standard,
             the selections file and testing.
@@ -31,7 +31,7 @@ Why these groups: each file is one layer. core never reads the game; engine read
 
 ## Request flag pattern
 
-ImGui draws from a callback where `mq.delay` must not be called and commands should not be sent. So the window never acts. A button only sets a flag in `app.requests` (`rescan`, `save`, `prepare`, `confirm`, `cancelConfirm`, `quit`), and the main loop in `init.lua`, which runs every `LOOP_DELAY_MS` (100 ms), takes the whole table each pass and acts on it. Stop Selling is the one exception that matters while a run is in progress: it calls `seller:requestStop()`, which only sets `stopRequested`; the worker checks it before every item.
+ImGui draws from a callback where `mq.delay` must not be called and commands should not be sent. So the window never acts. A button only sets a flag in `app.requests` (`rescan`, `save`, `saveNeverSell`, `prepare`, `confirm`, `cancelConfirm`, `quit`), and the main loop in `init.lua`, which runs every `LOOP_DELAY_MS` (100 ms), takes the whole table each pass and acts on it. Stop Selling is the one exception that matters while a run is in progress: it calls `seller:requestStop()`, which only sets `stopRequested`; the worker checks it before every item.
 
 The main loop also rescans when the merchant window opens or closes, discards merchant chat lines that arrive while idle, and refreshes readiness for the window. Any error inside the loop is caught, logged as `loop.internal_error`, and blocks selling until restart.
 
@@ -49,7 +49,7 @@ The main loop also rescans when the merchant window opens or closes, discards me
 
 Enforced by `dev/doc_audit.py`, which must PASS before a release:
 
-- Header in the first 60 lines: FILE, PACKAGE, VERSION, CHANGES (lists the current version), CREDITS, WHAT, WHY, WHERE, HOW, WHEN.
+- Header in the first 90 lines: FILE, PACKAGE, VERSION, CHANGES (lists the current version), CREDITS, WHAT, WHY, WHERE, HOW, WHEN.
 - Every function: a WHAT / WHY / WHERE / HOW / WHEN block above it, or a comment directly above for a one line helper documented in a shared block (the `probe` readers).
 - Every line of code: a comment on the line or within the three lines above.
 - Footer in the last 80 lines: END OF FILE.
@@ -66,7 +66,20 @@ Enforced by `dev/doc_audit.py`, which must PASS before a release:
 | `[Meta]` | `Schema=1`, `Tool=Farm_Vendor` |
 | `[Settings]` | `ProtectedBags=1,2` (optional) |
 | `[SelectedItems]` | `<itemID>=1` for each checked item |
+| `[NeverSell]` | `<itemID>=1` for each Never Sell item (1.4.0) |
 | `[ItemNames]` | `<itemID>=<name>`, for reading by hand only; never matched |
+
+`[NeverSell]` was added in 1.4.0 within schema 1: older versions keep it as an unknown section. An ID in both `[SelectedItems]` and `[NeverSell]` loads as Never Sell only.
+
+## Never Sell (1.4.0)
+
+Never Sell is enforced in three places, so one mistake cannot sell a protected item:
+
+1. ui.lua: the Sell checkbox is disabled for a Never Sell row and its click is ignored; Select All skips the row; ticking Never Sell removes the check.
+2. core.lua/store: Never Sell is never loaded or saved as checked.
+3. engine.lua/seller: `buildProposal` leaves Never Sell items out of the sale list.
+
+Ticking or unticking the box sets `app.requests.saveNeverSell`; the main loop calls `saveNeverSell()`, which uses `store:setNeverSell` so only the Never Sell list (and names) change in the file, never unsaved Sell checks. Only a manual untick removes it.
 
 A file with a different schema is opened read only: you can look but not save, so nothing is ever overwritten by a version that does not understand it. Unknown sections are kept word for word.
 
@@ -76,6 +89,6 @@ The only game commands are `/itemnotify` and `/sellitem`, both sent from `engine
 
 ## Testing
 
-`dev/run_tests.py` runs the real package under LuaJIT against `dev/harness.lua`, a mock MacroQuest client with a merchant that quotes after a delay and refuses a sale sent before the quote. TESTING.md lists the 31 scenarios and the client stages.
+`dev/run_tests.py` runs the real package under LuaJIT against `dev/harness.lua`, a mock MacroQuest client with a merchant that quotes after a delay and refuses a sale sent before the quote. TESTING.md lists the 37 scenarios and the client stages.
 
 <!-- END OF FILE: Farm_Vendor/ARCHITECTURE.md -->

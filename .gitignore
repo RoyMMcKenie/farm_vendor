@@ -1,7 +1,7 @@
 # =============================================================================
 #   FILE    : Farm_Vendor/.gitignore
 #   PACKAGE : Farm Vendor Lua (MacroQuest / EverQuest)
-#   VERSION : 1.3.0
+#   VERSION : 1.4.0
 #   WHAT    : Files git should never upload.
 #   WHY     : Keeps the repository to source and documentation only.
 #   WHERE   : Root of the repository (the Farm_Vendor folder).

@@ -1,8 +1,11 @@
 --[[==========================================================================
   FILE        : Farm_Vendor/dev/harness.lua
   PACKAGE     : Farm Vendor  (MacroQuest Lua / EverQuest)
-  VERSION     : 1.3.0
-  CHANGES     : 1.3.0  Moved from tests/ to dev/. Header, footer and function
+  VERSION     : 1.4.0
+  CHANGES     : 1.4.0  Checkbox clicks are queued per column: H.checks for
+                       the Sell box (##sell), H.never for the Never Sell
+                       box (##never). The table now has 8 columns.
+                1.3.0  Moved from tests/ to dev/. Header, footer and function
                        documentation added. No behaviour change.
                 1.2.1  ImGui stack balance tracking; failText injection;
                        ImGui provided through require('ImGui').
@@ -32,7 +35,7 @@
 ==========================================================================]]--
 
 -- Shared test state, also reachable as the global HARNESS.
-local H = { log = {}, cmds = {}, presses = {}, checks = {}, frame = 0, steps = {}, now = 0 }
+local H = { log = {}, cmds = {}, presses = {}, checks = {}, never = {}, frame = 0, steps = {}, now = 0 }
 _G.HARNESS = H
 
 -- ---------------- world model ----------------
@@ -317,9 +320,14 @@ function ImGui.Button(label)
   for i, p in ipairs(H.presses) do if label:find(p, 1, true) == 1 then table.remove(H.presses, i); H.pressed[#H.pressed+1]=label; return true end end
   return false
 end
--- Checkbox: returns a queued click from H.checks[row id], once.
+-- Checkbox: returns a queued click once, from H.checks[row id] for the Sell
+-- box or H.never[row id] for the Never Sell box. H.drawn records the value
+-- each row checkbox was drawn with, so tests can see what the player sees.
+H.drawn = {}
 function ImGui.Checkbox(label, v)
-  if curId and H.checks[curId] ~= nil then local nv = H.checks[curId]; H.checks[curId] = nil; return nv, true end
+  local q = (label == '##never') and H.never or H.checks     -- which column
+  if curId then H.drawn[label .. ':' .. tostring(curId)] = v end
+  if curId and q[curId] ~= nil then local nv = q[curId]; q[curId] = nil; return nv, true end
   return v, false
 end
 -- MQ2Lua provides ImGui via require('ImGui'); the harness does the same so the
